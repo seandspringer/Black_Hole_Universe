@@ -24,7 +24,15 @@ impl Plugin for BlackHoleUniverse {
         app.insert_resource(BlackHoleCount(4));
         app.insert_resource(WorldCount(0));
         app.add_systems(Startup, (setup_objects, setup_hub));
-        app.add_systems(Update, (update_clock, update_motion, update_collisions));
+        app.add_systems(
+            Update,
+            (
+                update_clock,
+                update_velocity,
+                update_motion,
+                update_collisions,
+            ),
+        );
     }
 }
 
@@ -84,7 +92,7 @@ fn setup_objects(
         &mut meshes,
         &mut materials,
         Movable::new(blackhole_count, &ObjectType::BlackHole)
-            .set_position(0.0, -5000.0)
+            .set_position(2500.0, -2500.0)
             .set_velocity(0.0, 1000.0)
             .set_mass(20.0)
             .build(),
@@ -108,7 +116,7 @@ fn setup_objects(
         &mut meshes,
         &mut materials,
         Movable::new(blackhole_count, &ObjectType::BlackHole)
-            .set_position(0.0, 5000.0)
+            .set_position(-2500.0, 2500.0)
             .set_velocity(0.0, -1000.0)
             .set_mass(10.0)
             .build(),
@@ -215,6 +223,25 @@ fn update_clock(
     }
 }
 
+fn update_velocity(
+    time: Res<Time>,
+    mut objects: Query<&mut Movable, With<Movable>>,
+    state: Res<GameState>,
+) {
+    if state.game_alive {
+        let vec: Vec<&Movable> = objects.iter().collect();
+        let mut velocities: Vec<Velocity> = Vec::new();
+        // first update positions
+        for movable in &objects {
+            velocities.push(movable.update_velocity(&vec, time.delta_secs()));
+        }
+
+        for (index, mut movable) in objects.iter_mut().enumerate() {
+            movable.set_velocity(velocities[index].vx, velocities[index].vy);
+        }
+    }
+}
+
 fn update_motion(
     time: Res<Time>,
     mut objects: Query<(&mut Movable, &mut Transform), With<Movable>>,
@@ -222,12 +249,27 @@ fn update_motion(
 ) {
     if state.game_alive {
         // first update positions
+        let BOUNDARY = 0.5 * UNIVERSE_SIZE;
         for (mut movable, mut transform) in &mut objects {
             //println!("{},{}", movable.velocity.vx, movable.velocity.vy);
+
             movable.position.x += movable.velocity.vx * time.delta_secs();
             movable.position.y += movable.velocity.vy * time.delta_secs();
-            transform.translation.x += movable.velocity.vx * time.delta_secs();
-            transform.translation.y += movable.velocity.vy * time.delta_secs();
+
+            //spherical universe wrap around
+            if movable.position.x > BOUNDARY {
+                movable.position.x = movable.position.x - UNIVERSE_SIZE; //off to right
+            } else if movable.position.x < -BOUNDARY {
+                movable.position.x = UNIVERSE_SIZE + movable.position.x; //off to left
+            }
+            if movable.position.y > BOUNDARY {
+                movable.position.y = movable.position.y - UNIVERSE_SIZE; // off to top
+            } else if movable.position.y < -BOUNDARY {
+                movable.position.y = UNIVERSE_SIZE + movable.position.y; //off to left
+            }
+
+            transform.translation.x = movable.position.x;
+            transform.translation.y = movable.position.y;
         }
     }
 }
@@ -266,6 +308,7 @@ fn update_collisions(
         }
 
         for group in destroyed {
+            println!("collision");
             let new = Movable::handle_collision(group.0, group.1);
             spawn_object(&mut commands, &mut meshes, &mut materials, new);
         }

@@ -1,4 +1,5 @@
 use crate::objects::traits::collisions::{CollisionDetection, Position, Shapes};
+use bevy::math::FloatPow;
 use bevy::prelude::*;
 use rand_distr::Normal;
 use std::cmp::{Eq, Ord, Ordering, PartialOrd};
@@ -8,6 +9,12 @@ use std::default::Default;
 pub enum ObjectType {
     BlackHole,
     World,
+}
+
+#[derive(Component, Debug)]
+pub struct Acceleration {
+    pub ax: f32, //% of speed of light
+    pub ay: f32,
 }
 
 #[derive(Component, Debug)]
@@ -74,6 +81,7 @@ impl<'a, 'b> Ord for MovableTuple<'a, 'b> {
 
 impl Movable {
     const MINIMUM_RADIUS: f32 = 5.0f32;
+    const G: f32 = 1000_000_000.0;
 
     pub fn new(id: u32, otype: &ObjectType) -> Self {
         Movable {
@@ -143,6 +151,36 @@ impl Movable {
 
     pub fn get_id(&self) -> u32 {
         self.id.0
+    }
+
+    pub fn calculate_acceleration(&self, other: &Self) -> Acceleration {
+        let dx = other.position.x - self.position.x;
+        let dy = other.position.y - self.position.y;
+        let r = (dx.squared() + dy.squared()).sqrt();
+        let a = Movable::G * other.size.mass / r.squared();
+        let theta = dy.atan2(dx);
+
+        Acceleration {
+            ax: a * theta.cos(),
+            ay: a * theta.sin(),
+        }
+    }
+
+    pub fn update_velocity(&self, others: &[&Movable], time: f32) -> Velocity {
+        let mut acc = Acceleration { ax: 0.0, ay: 0.0 };
+
+        for other in others {
+            if self != *other {
+                let cur = self.calculate_acceleration(other);
+                acc.ax += cur.ax;
+                acc.ay += cur.ay;
+            }
+        }
+
+        Velocity {
+            vx: self.velocity.vx + acc.ax * time,
+            vy: self.velocity.vy + acc.ay * time,
+        }
     }
 
     //private!
