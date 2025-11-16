@@ -1,7 +1,7 @@
 use bevy::camera::ScalingMode;
 use bevy::camera::Viewport;
 use bevy::prelude::*;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::objects::clocks::{TotalTime, WorldTime};
 use crate::objects::gamestate::GameState;
@@ -287,10 +287,12 @@ fn update_collisions(
         //this set is designed so that the order of the two colliding objects doesn't matter
         //i.e. there will not be duplicates in this list
 
-        let mut destroyed: BTreeSet<MovableTuple> = BTreeSet::<MovableTuple>::new();
+        let mut to_despawn: BTreeSet<Entity> = BTreeSet::<Entity>::new();
+        let mut to_destroy: BTreeMap<&Movable, Vec<&Movable>> =
+            BTreeMap::<&Movable, Vec<&Movable>>::new();
 
         for (entity, movable) in objects.iter() {
-            let mut found: BTreeSet<MovableTuple> = objects
+            let found: Vec<(Entity, &Movable)> = objects
                 .iter()
                 .filter(|x: &(Entity, &Movable)| {
                     if x.1 != movable {
@@ -299,20 +301,32 @@ fn update_collisions(
                         false
                     }
                 })
-                .map(|x: (Entity, &Movable)| {
-                    commands.entity(x.0).despawn();
-                    MovableTuple::new(x.1, movable)
-                })
                 .collect();
+
             if !found.is_empty() {
-                destroyed.append(&mut found);
+                to_despawn.insert(entity);
+
+                let (_entities, tokens): (Vec<Entity>, Vec<&Movable>) = found.into_iter().unzip();
+                to_destroy.insert(movable, tokens);
             }
         }
 
-        for group in destroyed {
-            println!("collision {} {}", group.0.get_id(), group.1.get_id());
-            let new = Movable::handle_collision(group.0, group.1);
-            spawn_object(&mut commands, &mut meshes, &mut materials, new);
+        for item in to_despawn {
+            commands.entity(item).despawn();
+        }
+
+        let mut destroyed: Vec<u32> = vec![];
+        for (k, v) in to_destroy {
+            if !destroyed.contains(&k.get_id()) {
+                destroyed.push(k.get_id());
+
+                for item in &v {
+                    destroyed.push(item.get_id());
+                }
+                
+                let new = Movable::handle_collision(k, &v);
+                spawn_object(&mut commands, &mut meshes, &mut materials, new);
+            }
         }
     }
 }

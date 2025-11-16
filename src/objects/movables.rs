@@ -33,7 +33,7 @@ pub struct Size {
     pub mass: f32,   //solar masses = 1.989x10^30 Kg
 }
 
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Copy, Clone, Eq, PartialEq)]
 pub struct ID(u32);
 
 #[derive(Component, Debug)]
@@ -247,30 +247,49 @@ impl Movable {
             .build()
     }
 
-    //private!
-    //fn generate_world(one: Self) -> Option<Self> {
-    //    // each world splits in half
+    //self collided with all the members in others slice
+    pub fn handle_collision(start: &Self, others: &[&Self]) -> Self {
+        let mut new = Movable::generate_blackhole(start, others[0]);
+        for item in others.into_iter().skip(1) {
+            new = Movable::generate_blackhole(&new, item);
+        }
 
-    //}
-
-    pub fn handle_collision(one: &Self, two: &Self) -> Self {
-        //let myType = one.otype;
-        //let otherType = two.otype;
-
-        //if myType == ObjectType::BlackHole || otherType == ObjectType::BlackHole {
-        //return blackhole
-        Movable::generate_blackhole(one, two)
-        //} else {
-        //world on world = 2 worlds
-        //}
+        new
     }
+
+    //pub fn handle_collision(one: &Self, two: &Self) -> Self {
+    //    Movable::generate_blackhole(one, two)
+    //}
 }
 
 impl PartialEq for Movable {
     fn eq(&self, other: &Self) -> bool {
         //two objects cannot occupy the same exact location
         //(self.position.x == other.position.x) && (self.position.y == other.position.y)
-        (self.id.0 == other.id.0) && (self.otype == other.otype)
+        self.id.0 == other.id.0
+    }
+}
+
+impl Eq for Movable {}
+impl PartialOrd for Movable {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for Movable {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let my_index = self.get_id();
+        let other_index = other.get_id();
+
+        let ret = if my_index < other_index {
+            Ordering::Less
+        } else if my_index > other_index {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
+        };
+
+        ret
     }
 }
 
