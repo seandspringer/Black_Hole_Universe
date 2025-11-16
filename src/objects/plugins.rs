@@ -9,11 +9,6 @@ use crate::objects::movables::{Movable, MovableTuple, ObjectType, Size, Velocity
 
 use crate::objects::traits::collisions::{CollisionDetection, Position, Shapes};
 
-#[derive(Resource)]
-pub struct BlackHoleCount(u32);
-#[derive(Resource)]
-pub struct WorldCount(u32);
-
 const UNIVERSE_SIZE: f32 = 10_000.0f32;
 
 pub struct BlackHoleUniverse;
@@ -21,8 +16,6 @@ pub struct BlackHoleUniverse;
 impl Plugin for BlackHoleUniverse {
     fn build(&self, app: &mut App) {
         app.insert_resource(GameState::new());
-        app.insert_resource(BlackHoleCount(4));
-        app.insert_resource(WorldCount(0));
         app.add_systems(Startup, (setup_objects, setup_hub));
         app.add_systems(
             Update,
@@ -56,8 +49,6 @@ fn setup_objects(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    blackhole_total: Res<BlackHoleCount>,
-    world_total: Res<WorldCount>,
 ) {
     let mut blackhole_count: u32 = 0;
     let mut world_count: u32 = 0;
@@ -91,7 +82,7 @@ fn setup_objects(
         &mut commands,
         &mut meshes,
         &mut materials,
-        Movable::new(blackhole_count, &ObjectType::BlackHole)
+        Movable::new(&ObjectType::BlackHole)
             .set_position(2500.0, -2500.0)
             .set_velocity(0.0, 1000.0)
             .set_mass(20.0)
@@ -109,19 +100,28 @@ fn setup_objects(
                 .build(),
         ));
     */
-    blackhole_count += 1;
 
     spawn_object(
         &mut commands,
         &mut meshes,
         &mut materials,
-        Movable::new(blackhole_count, &ObjectType::BlackHole)
+        Movable::new(&ObjectType::BlackHole)
             .set_position(-2500.0, 2500.0)
             .set_velocity(0.0, -1000.0)
-            .set_mass(10.0)
+            .set_mass(21.0)
             .build(),
     );
 
+    spawn_object(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        Movable::new(&ObjectType::BlackHole)
+            .set_position(0.0, 0.0)
+            .set_velocity(0.0, 0.0)
+            .set_mass(100.0)
+            .build(),
+    );
     /*commands.spawn((
         Mesh2d(meshes.add(Circle::new(25.0))),
         MeshMaterial2d(materials.add(hole_color)),
@@ -132,8 +132,6 @@ fn setup_objects(
             .set_mass(10.0)
             .build(),
     ));*/
-
-    blackhole_count += 1;
 
     /*commands.spawn((
         Mesh2d(meshes.add(Circle::new(50.0))),
@@ -312,7 +310,7 @@ fn update_collisions(
         }
 
         for group in destroyed {
-            println!("collision");
+            println!("collision {} {}", group.0.get_id(), group.1.get_id());
             let new = Movable::handle_collision(group.0, group.1);
             spawn_object(&mut commands, &mut meshes, &mut materials, new);
         }

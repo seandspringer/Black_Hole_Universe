@@ -4,6 +4,10 @@ use bevy::prelude::*;
 use rand_distr::Normal;
 use std::cmp::{Eq, Ord, Ordering, PartialOrd};
 use std::default::Default;
+use std::sync::atomic::{AtomicU32, Ordering::SeqCst};
+
+static BLACKHOLECOUNT: AtomicU32 = AtomicU32::new(0);
+static WORLDCOUNT: AtomicU32 = AtomicU32::new(0);
 
 #[derive(Component, Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ObjectType {
@@ -79,13 +83,18 @@ impl<'a, 'b> Ord for MovableTuple<'a, 'b> {
 }
 
 impl Movable {
-    const MINIMUM_RADIUS: f32 = 5.0f32;
+    const MINIMUM_RADIUS: f32 = 1.0f32;
     const G: f32 = 1000_000_000.0;
     const EPSILON: f32 = 1000.0; //to pad on radius to prevent divide by zero possibilities
     const MAXACCELERATION: f32 = 1.0E4;
     const MAXVELOCITY: f32 = 10_000.0; //that would mean travel the length of the universe in 1 second
 
-    pub fn new(id: u32, otype: &ObjectType) -> Self {
+    pub fn new(otype: &ObjectType) -> Self {
+        let id = match (otype) {
+            ObjectType::BlackHole => BLACKHOLECOUNT.fetch_add(1, SeqCst),
+            ObjectType::World => WORLDCOUNT.fetch_add(1, SeqCst),
+        };
+
         Movable {
             id: ID(id),
             otype: *otype,
@@ -100,8 +109,18 @@ impl Movable {
     }
 
     pub fn set_velocity(&mut self, vx: f32, vy: f32) -> &mut Self {
-        self.velocity.vx = vx.min(Movable::MAXVELOCITY);
-        self.velocity.vy = vy.min(Movable::MAXVELOCITY);
+        if vx < 0.0 {
+            self.velocity.vx = vx.max(-Movable::MAXVELOCITY);
+        } else {
+            self.velocity.vx = vx.min(Movable::MAXVELOCITY);
+        }
+
+        if vx < 0.0 {
+            self.velocity.vy = vy.max(-Movable::MAXVELOCITY);
+        } else {
+            self.velocity.vy = vy.min(Movable::MAXVELOCITY);
+        }
+
         self
     }
 
@@ -115,19 +134,21 @@ impl Movable {
         self.size.mass = mass;
 
         match self.otype {
-            ObjectType::BlackHole => self.size.radius = 3.0f32 * mass, //https://blackholes.stardate.org/resources/article-structure-of-a-black-hole.html
+            ObjectType::BlackHole => {
+                self.size.radius = (3.0f32 * mass).max(Movable::MINIMUM_RADIUS)
+            } //https://blackholes.stardate.org/resources/article-structure-of-a-black-hole.html
             ObjectType::World => {
                 //https://www.aanda.org/articles/aa/full_html/2024/06/aa48690-23/aa48690-23.html#F1, Eq5
                 if mass < 5.0 {
-                    self.size.radius = 1.02f32 * mass.powf(0.27);
+                    self.size.radius = (1.02f32 * mass.powf(0.27)).max(Movable::MINIMUM_RADIUS);
                 } else if mass < 127.0 {
-                    self.size.radius = 18.6f32 * mass.powf(-0.06);
+                    self.size.radius = (18.6f32 * mass.powf(-0.06)).max(Movable::MINIMUM_RADIUS);
                 } else {
-                    self.size.radius = 0.56 * mass.powf(0.67);
+                    self.size.radius = (0.56 * mass.powf(0.67)).max(Movable::MINIMUM_RADIUS);
                 }
             }
         }
-
+        println!("r={}", self.size.radius);
         self
     }
 
@@ -164,7 +185,7 @@ impl Movable {
         let a =
             (Movable::G * other.size.mass / (r + Movable::EPSILON)).min(Movable::MAXACCELERATION);
         let theta = dy.atan2(dx);
-        println!(
+        /*println!(
             "{} {r} {a} {theta} {} {} {} {} {} {}",
             self.id.0,
             a * theta.cos(),
@@ -173,7 +194,7 @@ impl Movable {
             self.position.y,
             dy,
             dx
-        );
+        );*/
 
         Acceleration {
             ax: a * theta.cos(),
@@ -219,7 +240,7 @@ impl Movable {
         let new_velocity_y =
             ((one.size.mass * one.velocity.vy) + (two.size.mass * two.velocity.vy)) / new_mass;
 
-        Movable::new(one.id.0, &ObjectType::BlackHole)
+        Movable::new(&ObjectType::BlackHole)
             .set_position(center_of_mass_x, center_of_mass_y)
             .set_velocity(new_velocity_x, new_velocity_y)
             .set_mass(new_mass)
