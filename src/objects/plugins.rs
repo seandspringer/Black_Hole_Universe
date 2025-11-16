@@ -250,11 +250,14 @@ fn update_motion(
     if state.game_alive {
         // first update positions
         let BOUNDARY = 0.5 * UNIVERSE_SIZE;
+        let elapsed = time.delta_secs();
+
         for (mut movable, mut transform) in &mut objects {
             //println!("{},{}", movable.velocity.vx, movable.velocity.vy);
 
-            movable.position.x += movable.velocity.vx * time.delta_secs();
-            movable.position.y += movable.velocity.vy * time.delta_secs();
+            movable.position.x_prev = movable.position.x;
+            movable.position.y_prev = movable.position.y;
+            movable.update_location(elapsed);
 
             //spherical universe wrap around
             if movable.position.x > BOUNDARY {
@@ -285,6 +288,7 @@ fn update_collisions(
     if state.game_alive {
         //this set is designed so that the order of the two colliding objects doesn't matter
         //i.e. there will not be duplicates in this list
+
         let mut destroyed: BTreeSet<MovableTuple> = BTreeSet::<MovableTuple>::new();
 
         for (entity, movable) in objects.iter() {

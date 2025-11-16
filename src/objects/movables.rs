@@ -1,4 +1,4 @@
-use crate::objects::traits::collisions::{CollisionDetection, Position, Shapes};
+use crate::objects::traits::collisions::{CollisionDetection, LineSegment, Position, Shapes};
 use bevy::math::FloatPow;
 use bevy::prelude::*;
 use rand_distr::Normal;
@@ -52,7 +52,6 @@ impl<'a, 'b> PartialEq for MovableTuple<'a, 'b> {
     fn eq(&self, other: &Self) -> bool {
         let ret = ((self.0 == other.0) || (self.0 == other.1))
             && ((self.1 == other.0) || (self.1 == other.1));
-        println!("partialEq result: {}", ret);
         ret
     }
 }
@@ -82,6 +81,9 @@ impl<'a, 'b> Ord for MovableTuple<'a, 'b> {
 impl Movable {
     const MINIMUM_RADIUS: f32 = 5.0f32;
     const G: f32 = 1000_000_000.0;
+    const EPSILON: f32 = 1000.0; //to pad on radius to prevent divide by zero possibilities
+    const MAXACCELERATION: f32 = 1.0E4;
+    const MAXVELOCITY: f32 = 10_000.0; //that would mean travel the length of the universe in 1 second
 
     pub fn new(id: u32, otype: &ObjectType) -> Self {
         Movable {
@@ -98,8 +100,8 @@ impl Movable {
     }
 
     pub fn set_velocity(&mut self, vx: f32, vy: f32) -> &mut Self {
-        self.velocity.vx = vx;
-        self.velocity.vy = vy;
+        self.velocity.vx = vx.min(Movable::MAXVELOCITY);
+        self.velocity.vy = vy.min(Movable::MAXVELOCITY);
         self
     }
 
@@ -136,7 +138,9 @@ impl Movable {
             otype: self.otype,
             position: Position {
                 x: self.position.x,
+                x_prev: self.position.x,
                 y: self.position.y,
+                y_prev: self.position.y,
             },
             velocity: Velocity {
                 vx: self.velocity.vx,
@@ -156,14 +160,30 @@ impl Movable {
     pub fn calculate_acceleration(&self, other: &Self) -> Acceleration {
         let dx = other.position.x - self.position.x;
         let dy = other.position.y - self.position.y;
-        let r = (dx.squared() + dy.squared()).sqrt();
-        let a = Movable::G * other.size.mass / r.squared();
+        let r = dx.squared() + dy.squared();
+        let a =
+            (Movable::G * other.size.mass / (r + Movable::EPSILON)).min(Movable::MAXACCELERATION);
         let theta = dy.atan2(dx);
+        println!(
+            "{} {r} {a} {theta} {} {} {} {} {} {}",
+            self.id.0,
+            a * theta.cos(),
+            a * theta.sin(),
+            self.position.x,
+            self.position.y,
+            dy,
+            dx
+        );
 
         Acceleration {
             ax: a * theta.cos(),
             ay: a * theta.sin(),
         }
+    }
+
+    pub fn update_location(&mut self, time_delta: f32) {
+        self.position.x += self.velocity.vx * time_delta;
+        self.position.y += self.velocity.vy * time_delta;
     }
 
     pub fn update_velocity(&self, others: &[&Movable], time: f32) -> Velocity {
@@ -238,7 +258,12 @@ impl Default for Movable {
         Movable {
             id: ID(0),
             otype: ObjectType::BlackHole,
-            position: Position { x: 0.0, y: -5000.0 },
+            position: Position {
+                x: 0.0,
+                y: -5000.0,
+                x_prev: 0.0,
+                y_prev: -5000.0,
+            },
             velocity: Velocity {
                 vx: 0.0,
                 vy: 1000.0,
@@ -260,9 +285,9 @@ impl CollisionDetection for Movable {
         Shapes::Circle(self.size.radius)
     }
 
-    fn distance_to(&self, point: &Position) -> f32 {
-        ((self.position.x - point.x) * (self.position.x - point.x)
-            + (self.position.y - point.y) * (self.position.y - point.y))
-            .sqrt()
-    }
+    //fn distance_to(&self, point: &Position) -> f32 {
+    //    ((self.position.x - point.x) * (self.position.x - point.x)
+    //        + (self.position.y - point.y) * (self.position.y - point.y))
+    //        .sqrt()
+    //}
 }
