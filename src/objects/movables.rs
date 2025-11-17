@@ -3,6 +3,7 @@ use bevy::math::FloatPow;
 use bevy::prelude::*;
 use rand_distr::Normal;
 use std::cmp::{Eq, Ord, Ordering, PartialOrd};
+use std::collections::BTreeSet;
 use std::default::Default;
 use std::sync::atomic::{AtomicU32, Ordering::SeqCst};
 
@@ -13,6 +14,7 @@ static WORLDCOUNT: AtomicU32 = AtomicU32::new(0);
 pub enum ObjectType {
     BlackHole,
     World,
+    Null,
 }
 
 #[derive(Component, Debug)]
@@ -43,6 +45,148 @@ pub struct Movable {
     pub position: Position,
     pub velocity: Velocity,
     pub size: Size,
+}
+
+#[derive(Component, Debug)]
+pub struct CollisionFrame<'a> {
+    array: Vec<CollisionSet<'a>>,
+}
+
+impl<'a> CollisionFrame<'a> {
+    pub fn new() -> Self {
+        CollisionFrame {
+            array: Vec::<CollisionSet<'a>>::new(),
+        }
+    }
+
+    //when appending, merges intersecting CollisionSets because if
+    //0 collides with 2 and 1 collides with 2, then 0-1-2 all collide together
+    //returns indicator: true means the push-ed CollisionSet was merged,
+    //false means that it was a new unique collision
+    pub fn push(&mut self, new: CollisionSet<'a>) -> bool {
+        let mut found = false;
+
+        for item in &mut self.array {
+            match CollisionSet::merge_intersection(item, &new) {
+                Some(n) => {
+                    println!("{:?}", n);
+                    *item = n;
+                    found = true;
+                    break;
+                }
+                None => {}
+            }
+        }
+
+        if !found {
+            self.array.push(new);
+        }
+
+        found
+    }
+
+    pub fn collect(&self) -> Option<Vec<Movable>> {
+        let mut ret = Vec::<Movable>::new();
+
+        if self.array.len() == 0 {
+            return None;
+        }
+
+        //all CollisionSets in self.array are now guaranteed to be unique collisions
+        for item in &self.array {
+            match item.collide() {
+                Some(n) => ret.push(n),
+                None => {}
+            }
+        }
+
+        Some(ret)
+    }
+}
+
+#[derive(Component, Debug)]
+pub struct CollisionSet<'a> {
+    data: BTreeSet<&'a Movable>,
+}
+
+impl<'a> CollisionSet<'a> {
+    pub fn new() -> Self {
+        CollisionSet {
+            data: BTreeSet::<&'a Movable>::new(),
+        }
+    }
+
+    pub fn from_tuple(&mut self, tup: (&'a Movable, &'a Movable)) -> Self {
+        let mut new = Self::new();
+        new.append(tup.0);
+        new.append(tup.1);
+
+        new
+    }
+
+    pub fn append(&mut self, other: &'a Movable) -> bool {
+        self.data.insert(other)
+    }
+
+    pub fn intersect(&self, other: &CollisionSet<'a>) -> Self {
+        let set = self.data.intersection(&other.data);
+        //let ret = CollisionSet::new();
+        let mut new = BTreeSet::<&'a Movable>::new();
+        for item in set {
+            new.insert(item);
+        }
+
+        CollisionSet { data: new }
+    }
+
+    pub fn union(&self, other: &CollisionSet<'a>) -> Self {
+        let union = self.data.union(&other.data);
+        //let ret = CollisionSet::new();
+        let mut new = BTreeSet::<&'a Movable>::new();
+        for item in union {
+            new.insert(item);
+        }
+
+        CollisionSet { data: new }
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    pub fn merge_intersection(
+        one: &CollisionSet<'a>,
+        two: &CollisionSet<'a>,
+    ) -> Option<CollisionSet<'a>> {
+        let intersect = one.intersect(two);
+        if !intersect.is_empty() {
+            Option::Some(one.union(two))
+        } else {
+            Option::None
+        }
+    }
+
+    pub fn collide(&self) -> Option<Movable> {
+        let count = self.len();
+        if count > 1 {
+            //gotta have 2 obj to collide
+
+            let mut cur = Movable::new_nulltype();
+
+            for item in &self.data {
+                println!("{:?}", item);
+                cur = cur.handle_collision(item);
+            }
+
+            return Some(cur);
+        }
+
+        None
+    }
 }
 
 #[derive(Component, Debug)]
@@ -93,11 +237,20 @@ impl Movable {
         let id = match (otype) {
             ObjectType::BlackHole => BLACKHOLECOUNT.fetch_add(1, SeqCst),
             ObjectType::World => WORLDCOUNT.fetch_add(1, SeqCst),
+            _ => 0,
         };
 
         Movable {
             id: ID(id),
             otype: *otype,
+            ..default()
+        }
+    }
+
+    pub fn new_nulltype() -> Self {
+        Movable {
+            id: ID(0),
+            otype: ObjectType::Null,
             ..default()
         }
     }
@@ -147,6 +300,7 @@ impl Movable {
                     self.size.radius = (0.56 * mass.powf(0.67)).max(Movable::MINIMUM_RADIUS);
                 }
             }
+            _ => {}
         }
         println!("r={}", self.size.radius);
         self
@@ -248,13 +402,8 @@ impl Movable {
     }
 
     //self collided with all the members in others slice
-    pub fn handle_collision(start: &Self, others: &[&Self]) -> Self {
-        let mut new = Movable::generate_blackhole(start, others[0]);
-        for item in others.into_iter().skip(1) {
-            new = Movable::generate_blackhole(&new, item);
-        }
-
-        new
+    pub fn handle_collision(&self, two: &Self) -> Self {
+        Movable::generate_blackhole(self, two)
     }
 
     //pub fn handle_collision(one: &Self, two: &Self) -> Self {
@@ -300,17 +449,14 @@ impl Default for Movable {
             otype: ObjectType::BlackHole,
             position: Position {
                 x: 0.0,
-                y: -5000.0,
+                y: 0.0,
                 x_prev: 0.0,
-                y_prev: -5000.0,
+                y_prev: 0.0,
             },
-            velocity: Velocity {
-                vx: 0.0,
-                vy: 1000.0,
-            },
+            velocity: Velocity { vx: 0.0, vy: 0.0 },
             size: Size {
-                radius: 50.0,
-                mass: 20.0,
+                radius: 0.0,
+                mass: 0.0,
             },
         }
     }

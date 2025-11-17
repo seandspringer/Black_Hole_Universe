@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::objects::clocks::{TotalTime, WorldTime};
 use crate::objects::gamestate::GameState;
-use crate::objects::movables::{Movable, MovableTuple, ObjectType, Size, Velocity};
+use crate::objects::movables::{CollisionFrame, CollisionSet, Movable, ObjectType, Velocity};
 
 use crate::objects::traits::collisions::{CollisionDetection, Position, Shapes};
 
@@ -279,7 +279,7 @@ fn update_collisions(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    mut objects: Query<(Entity, &mut Movable), With<Movable>>,
+    objects: Query<(Entity, &mut Movable), With<Movable>>,
     state: Res<GameState>,
 ) {
     // next check for collisions
@@ -287,7 +287,48 @@ fn update_collisions(
         //this set is designed so that the order of the two colliding objects doesn't matter
         //i.e. there will not be duplicates in this list
 
+        //a lot of this complexity is to remove double counting and to handle group collisions
+        //a group collision would be one were more than 2 items collided together within the last frame
+
         let mut to_despawn: BTreeSet<Entity> = BTreeSet::<Entity>::new();
+        let mut to_destroy = CollisionFrame::new();
+
+        for (entity, movable) in objects.iter() {
+            let mut set = CollisionSet::new();
+            let mut collide = false;
+
+            for (_, item) in objects.iter() {
+                if item != movable {
+                    if item.collided(movable) {
+                        collide = true;
+                        set.append(item);
+                    }
+                }
+            }
+
+            if collide {
+                to_despawn.insert(entity);
+
+                set.append(movable);
+                to_destroy.push(set);
+            }
+        }
+
+        for item in to_despawn {
+            commands.entity(item).despawn();
+        }
+
+        match to_destroy.collect() {
+            Some(n) => {
+                //then add
+                for new in n {
+                    spawn_object(&mut commands, &mut meshes, &mut materials, new);
+                }
+            }
+            None => {}
+        }
+
+        /*
         let mut to_destroy: BTreeMap<&Movable, Vec<&Movable>> =
             BTreeMap::<&Movable, Vec<&Movable>>::new();
 
@@ -323,10 +364,10 @@ fn update_collisions(
                 for item in &v {
                     destroyed.push(item.get_id());
                 }
-                
+
                 let new = Movable::handle_collision(k, &v);
                 spawn_object(&mut commands, &mut meshes, &mut materials, new);
             }
-        }
+        }*/
     }
 }
