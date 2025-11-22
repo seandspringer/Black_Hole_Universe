@@ -1,13 +1,14 @@
-use bevy::camera::ScalingMode;
-use bevy::camera::Viewport;
-use bevy::prelude::*;
-use std::collections::{BTreeMap, BTreeSet};
-
 use crate::objects::clocks::{TotalTime, WorldTime};
 use crate::objects::gamestate::GameState;
 use crate::objects::movables::{CollisionFrame, CollisionSet, Movable, ObjectType, Velocity};
-
 use crate::objects::traits::collisions::{CollisionDetection, Position, Shapes};
+use bevy::camera::ScalingMode;
+use bevy::camera::Viewport;
+use bevy::prelude::*;
+use rayon::prelude::*;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const UNIVERSE_SIZE: f32 = 10_000.0f32;
 
@@ -290,10 +291,38 @@ fn update_collisions(
         //a lot of this complexity is to remove double counting and to handle group collisions
         //a group collision would be one were more than 2 items collided together within the last frame
 
+        let to_despawn: Mutex<BTreeSet<Entity>> = Mutex::new(BTreeSet::<Entity>::new());
+        let to_destroy = Mutex::new(CollisionFrame::new());
+
+        objects.par_iter().for_each(|(entity, movable)| {
+            let mut set = CollisionSet::new();
+            let mut collide = false;
+
+            for (_, item) in objects.iter() {
+                if item != movable {
+                    if item.collided(movable) {
+                        collide = true;
+                        set.append(item);
+                    }
+                }
+            }
+
+            if collide {
+                let mut despawn_lock = to_despawn.lock().unwrap();
+                despawn_lock.insert(entity);
+
+                set.append(movable);
+
+                let mut destroy_lock = to_destroy.lock().unwrap();
+                destroy_lock.push(set);
+            }
+        });
+
+        /*
         let mut to_despawn: BTreeSet<Entity> = BTreeSet::<Entity>::new();
         let mut to_destroy = CollisionFrame::new();
-
         for (entity, movable) in objects.iter() {
+            //let mut set = CollisionSet::new();
             let mut set = CollisionSet::new();
             let mut collide = false;
 
@@ -312,13 +341,14 @@ fn update_collisions(
                 set.append(movable);
                 to_destroy.push(set);
             }
+        }*/
+
+        let to_despawn = to_despawn.lock().unwrap();
+        for item in to_despawn.iter() {
+            commands.entity(*item).despawn();
         }
 
-        for item in to_despawn {
-            commands.entity(item).despawn();
-        }
-
-        match to_destroy.collect() {
+        match to_destroy.lock().unwrap().collect() {
             Some(n) => {
                 //then add
                 for new in n {
