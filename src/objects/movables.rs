@@ -47,6 +47,12 @@ pub struct Movable {
     pub size: Size,
 }
 
+pub enum CollisionResult {
+    None,
+    Single(Movable),
+    NSize(Vec<Movable>),
+}
+
 #[derive(Component, Debug)]
 pub struct CollisionFrame<'a> {
     array: Vec<CollisionSet<'a>>,
@@ -69,7 +75,7 @@ impl<'a> CollisionFrame<'a> {
         for item in &mut self.array {
             match CollisionSet::merge_intersection(item, &new) {
                 Some(n) => {
-                    println!("{:?}", n);
+                    //println!("{:?}", n);
                     *item = n;
                     found = true;
                     break;
@@ -85,22 +91,23 @@ impl<'a> CollisionFrame<'a> {
         found
     }
 
-    pub fn collect(&self) -> Option<Vec<Movable>> {
-        let mut ret = Vec::<Movable>::new();
+    pub fn collect(&self) -> CollisionResult {
+        let mut ret = Vec::<Movable>::new(); //flatten
 
         if self.array.len() == 0 {
-            return None;
+            return CollisionResult::None;
         }
 
         //all CollisionSets in self.array are now guaranteed to be unique collisions
         for item in &self.array {
             match item.collide() {
-                Some(n) => ret.push(n),
-                None => {}
+                CollisionResult::Single(n) => ret.push(n),
+                CollisionResult::NSize(mut n) => ret.append(&mut n),
+                CollisionResult::None => {}
             }
         }
 
-        Some(ret)
+        CollisionResult::NSize(ret)
     }
 }
 
@@ -170,22 +177,22 @@ impl<'a> CollisionSet<'a> {
         }
     }
 
-    pub fn collide(&self) -> Option<Movable> {
+    pub fn collide(&self) -> CollisionResult {
         let count = self.len();
         if count > 1 {
             //gotta have 2 obj to collide
 
-            let mut cur = Movable::new_nulltype();
+            //NOT FINISHED: RETURN TYPE NOT RIGHT AND WILL NOT HANDLE 3+ planet collisions
 
+            let mut v = Vec::<&&'a Movable>::new();
             for item in &self.data {
-                println!("{:?}", item);
-                cur = cur.handle_collision(item);
+                v.push(item);
             }
 
-            return Some(cur);
+            return Movable::process_collisions(&v);
         }
 
-        None
+        CollisionResult::None
     }
 }
 
@@ -225,6 +232,9 @@ impl<'a, 'b> Ord for MovableTuple<'a, 'b> {
         ret
     }
 }
+
+// 2 planets split into 4 planets
+type PlanetCollisionResult = (Movable, Movable, Movable, Movable);
 
 impl Movable {
     const MINIMUM_RADIUS: f32 = 1.0f32;
@@ -302,7 +312,32 @@ impl Movable {
             }
             _ => {}
         }
-        println!("r={}", self.size.radius);
+        //println!("r={}", self.size.radius);
+        self
+    }
+
+    //inverse function of above
+    pub fn set_radius(&mut self, radius: f32) -> &mut Self {
+        self.size.radius = radius;
+
+        match self.otype {
+            ObjectType::BlackHole => {
+                self.size.mass = radius / 3.0;
+            } //https://blackholes.stardate.org/resources/article-structure-of-a-black-hole.html
+            ObjectType::World => {
+                //https://www.aanda.org/articles/aa/full_html/2024/06/aa48690-23/aa48690-23.html#F1, Eq5
+
+                if radius < 1.575151 {
+                    self.size.mass = (radius / 1.02).powf(100.0 / 27.0); //(1.02f32 * mass.powf(0.27)).max(Movable::MINIMUM_RADIUS);
+                } else if radius < 13.90864 {
+                    self.size.mass = (radius / 18.6).powf(-100.0 / 6.0); //(18.6f32 * mass.powf(-0.06)).max(Movable::MINIMUM_RADIUS);
+                } else {
+                    self.size.mass = (radius / 0.56).powf(100.0 / 67.0) //(0.56 * mass.powf(0.67)).max(Movable::MINIMUM_RADIUS);
+                }
+            }
+            _ => {}
+        }
+
         self
     }
 
@@ -401,9 +436,95 @@ impl Movable {
             .build()
     }
 
+    fn split_planet(&self) -> (Self, Self) {
+        let new_velocity = (self.velocity.vx.squared() + self.velocity.vy.squared()).sqrt() / 2.0;
+        let theta = self.velocity.vy.atan2(self.velocity.vx);
+        let new_radius = self.size.radius / 2.0;
+        let angle_offset = 0.785398f32; //45 deg in rad 
+
+        //need to move these new planets so that they are outside eachother's collision zone
+
+        let new_theta = (theta + angle_offset);
+        let p1 = Movable::new(&ObjectType::BlackHole)
+            .set_position(
+                self.position.x + new_radius * new_theta.cos(),
+                self.position.y + new_radius * new_theta.sin(),
+            )
+            .set_velocity(
+                new_velocity * new_theta.cos(),
+                new_velocity * new_theta.sin(),
+            )
+            .set_radius(new_radius)
+            .build();
+
+        let new_theta = (theta - angle_offset);
+        let p2 = Movable::new(&ObjectType::BlackHole)
+            .set_position(
+                self.position.x - new_radius * new_theta.cos(),
+                self.position.y - new_radius * new_theta.sin(),
+            )
+            .set_velocity(
+                new_velocity * new_theta.cos(),
+                new_velocity * new_theta.sin(),
+            )
+            .set_radius(new_radius)
+            .build();
+
+        (p1, p2)
+    }
+
+    //private!
+    fn generate_planets(one: &Self, two: &Self) -> PlanetCollisionResult {
+        let (p1, p2) = one.split_planet();
+        let (p3, p4) = two.split_planet();
+        (p1, p2, p3, p4)
+    }
+
     //self collided with all the members in others slice
-    pub fn handle_collision(&self, two: &Self) -> Self {
-        Movable::generate_blackhole(self, two)
+    /*pub fn handle_collision(one: &Self, two: &Self, out: &mut CollisionResult) {
+        if one.otype == ObjectType::BlackHole || two.otype == ObjectType::BlackHole {
+            *out = CollisionResult::Single(Movable::generate_blackhole(one, two));
+        } else {
+            *out = CollisionResult::Quad(Movable::generate_planets(one, two));
+        }
+    }*/
+
+    pub fn process_collisions(items: &[&&Movable]) -> CollisionResult {
+        let count = items.len();
+        if count == 0 {
+            return CollisionResult::None;
+        }
+
+        let bh_count: i32 = items
+            .iter()
+            .map(|x| {
+                if x.otype == ObjectType::BlackHole {
+                    1
+                } else {
+                    0
+                }
+            })
+            .sum();
+
+        if bh_count > 0 {
+            //then the result must be a bh
+            let mut cur = Movable::generate_blackhole(items[0], items[1]);
+            for i in 2..count {
+                cur = Movable::generate_blackhole(&cur, items[i]); //like a cumsum
+            }
+
+            CollisionResult::Single(cur)
+        } else {
+            //only planets in this collision
+            let mut vec = Vec::<Movable>::new();
+            for i in 0..count {
+                let (p1, p2) = items[i].split_planet();
+                vec.push(p1);
+                vec.push(p2);
+            }
+
+            CollisionResult::NSize(vec)
+        }
     }
 
     //pub fn handle_collision(one: &Self, two: &Self) -> Self {

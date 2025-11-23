@@ -1,6 +1,8 @@
 use crate::objects::clocks::{TotalTime, WorldTime};
 use crate::objects::gamestate::GameState;
-use crate::objects::movables::{CollisionFrame, CollisionSet, Movable, ObjectType, Velocity};
+use crate::objects::movables::{
+    CollisionFrame, CollisionResult, CollisionSet, Movable, ObjectType, Velocity,
+};
 use crate::objects::traits::collisions::{CollisionDetection, Position, Shapes};
 use bevy::camera::ScalingMode;
 use bevy::camera::Viewport;
@@ -51,9 +53,6 @@ fn setup_objects(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    let mut blackhole_count: u32 = 0;
-    let mut world_count: u32 = 0;
-
     commands.spawn((
         Camera2d,
         Projection::from(OrthographicProjection {
@@ -85,7 +84,7 @@ fn setup_objects(
         &mut materials,
         Movable::new(&ObjectType::BlackHole)
             .set_position(2500.0, -2500.0)
-            .set_velocity(0.0, 1000.0)
+            .set_velocity(1000.0, 1000.0)
             .set_mass(20.0)
             .build(),
     );
@@ -108,7 +107,7 @@ fn setup_objects(
         &mut materials,
         Movable::new(&ObjectType::BlackHole)
             .set_position(-2500.0, 2500.0)
-            .set_velocity(0.0, -1000.0)
+            .set_velocity(-1000.0, -1000.0)
             .set_mass(21.0)
             .build(),
     );
@@ -349,13 +348,16 @@ fn update_collisions(
         }
 
         match to_destroy.lock().unwrap().collect() {
-            Some(n) => {
+            CollisionResult::Single(n) => {
+                spawn_object(&mut commands, &mut meshes, &mut materials, n);
+            }
+            CollisionResult::NSize(n) => {
                 //then add
                 for new in n {
                     spawn_object(&mut commands, &mut meshes, &mut materials, new);
                 }
             }
-            None => {}
+            _ => {}
         }
 
         /*
