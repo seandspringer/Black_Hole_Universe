@@ -7,19 +7,22 @@ use crate::objects::traits::collisions::{CollisionDetection, Position, Shapes};
 use bevy::camera::ScalingMode;
 use bevy::camera::Viewport;
 use bevy::prelude::*;
+use bevy::ui::RelativeCursorPosition;
+use bevy::window::PrimaryWindow;
 use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-const UNIVERSE_SIZE: f32 = 10_000.0f32;
+const UNIVERSE_SIZE: f32 = 100_000.0f32;
 
 pub struct BlackHoleUniverse;
 
 impl Plugin for BlackHoleUniverse {
     fn build(&self, app: &mut App) {
         app.insert_resource(GameState::new());
-        app.add_systems(Startup, (setup_objects, setup_hub));
+        app.add_systems(Startup, (setup_field, setup_hub, setup_objects).chain());
+        app.add_systems(Update, (drag_slider, update_slider).chain());
         app.add_systems(
             Update,
             (
@@ -27,10 +30,26 @@ impl Plugin for BlackHoleUniverse {
                 update_velocity,
                 update_motion,
                 update_collisions,
-            ),
+            )
+                .chain(),
         );
     }
 }
+
+#[derive(Component)]
+
+struct SliderValue {
+    value: f32,
+}
+impl Default for SliderValue {
+    fn default() -> Self {
+        SliderValue { value: 0.5 }
+    }
+}
+const SLIDERWIDTH: f32 = 100.0;
+
+#[derive(Component)]
+struct SliderBkg;
 
 fn spawn_object(
     mut commands: &mut Commands,
@@ -48,7 +67,7 @@ fn spawn_object(
     ));
 }
 
-fn setup_objects(
+fn setup_field(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
@@ -76,7 +95,13 @@ fn setup_objects(
         MeshMaterial2d(materials.add(Color::linear_rgb(0.9, 0.3, 0.3))),
         Transform::from_translation(Vec3::new(0.0, 0.0, -2.0)),
     ));
+}
 
+fn setup_objects(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
     //for i in 0..black_holes.0 {
     spawn_object(
         &mut commands,
@@ -84,7 +109,7 @@ fn setup_objects(
         &mut materials,
         Movable::new(&ObjectType::BlackHole)
             .set_position(2500.0, -2500.0)
-            .set_velocity(1000.0, 1000.0)
+            .set_velocity(1200.0, 1000.0)
             .set_mass(20.0)
             .build(),
     );
@@ -107,7 +132,7 @@ fn setup_objects(
         &mut materials,
         Movable::new(&ObjectType::BlackHole)
             .set_position(-2500.0, 2500.0)
-            .set_velocity(-1000.0, -1000.0)
+            .set_velocity(-1200.0, -1000.0)
             .set_mass(21.0)
             .build(),
     );
@@ -148,7 +173,7 @@ fn setup_objects(
     //}
 }
 
-fn setup_hub(mut commands: Commands) {
+fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWindow>>) {
     commands
         .spawn((
             Text::new("Total Time: "),
@@ -198,6 +223,129 @@ fn setup_hub(mut commands: Commands) {
             TextColor(Color::linear_rgba(1.0, 0.5, 0.0, 0.25)),
             WorldTime,
         ));
+
+    let mut height_in_pixels = 1000;
+    if let Ok(window) = window_query.single() {
+        height_in_pixels = window.resolution.physical_height();
+        println!(
+            "{} {}",
+            window.resolution.physical_height(),
+            window.resolution.physical_width()
+        )
+    }
+
+    let left_container = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                flex_direction: FlexDirection::Column, // Stack children vertically
+                row_gap: Val::Px(15.0),
+                top: px(50),
+                left: px(20),
+                height: px(height_in_pixels - 200),
+                width: px(SLIDERWIDTH * 2.0),
+                align_items: AlignItems::Center,
+                justify_items: JustifyItems::Center,
+                align_content: AlignContent::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            //BorderColor::all(Color::WHITE),
+            //Outline::new(px(1), Val::ZERO, Color::WHITE),
+        ))
+        .id();
+
+    let bh_count_text = commands
+        .spawn((
+            Text::new("Count"),
+            TextFont {
+                font_size: 16.0,
+                ..default()
+            },
+            TextColor(Color::WHITE),
+            TextLayout::new_with_justify(Justify::Center),
+        ))
+        .id();
+
+    let bh_count_slider = commands
+        .spawn((
+            Node {
+                //position_type: PositionType::Absolute,
+                height: px(50.0),
+                width: px(SLIDERWIDTH),
+                align_items: AlignItems::Center,
+                justify_items: JustifyItems::Center,
+                align_content: AlignContent::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            BorderColor::all(Color::WHITE),
+            Outline::new(px(1), Val::ZERO, Color::WHITE),
+            Interaction::None,
+            RelativeCursorPosition::default(),
+            SliderValue::default(),
+        ))
+        .id();
+
+    let bh_count_bkg = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: px(0),
+                left: px(0),
+                height: px(50.0),
+                width: px(SLIDERWIDTH / 2.0),
+                ..default()
+            },
+            BackgroundColor(Color::linear_rgba(0.0, 0.4, 0.0, 1.0)),
+            SliderBkg,
+        ))
+        .id();
+
+    let left_header = commands
+        .spawn((
+            Text::new("Black Hole Settings"),
+            TextFont {
+                font_size: 16.0,
+                ..default()
+            },
+            TextColor(Color::linear_rgba(0.9, 0.9, 0.9, 0.5)),
+        ))
+        .id();
+
+    commands.entity(left_container).add_child(left_header);
+    commands.entity(bh_count_slider).add_child(bh_count_bkg);
+    commands.entity(bh_count_slider).add_child(bh_count_text);
+    commands.entity(left_container).add_child(bh_count_slider);
+}
+
+fn drag_slider(
+    mut interaction_query: Query<(&Interaction, &RelativeCursorPosition, &mut SliderValue)>,
+) {
+    for (interaction, relative_cursor, mut slider_value) in &mut interaction_query {
+        if !matches!(*interaction, Interaction::Pressed) {
+            continue;
+        }
+
+        let Some(pos) = relative_cursor.normalized else {
+            continue;
+        };
+
+        slider_value.value = 0.5 + pos.x.clamp(-0.5, 0.5);
+    }
+}
+
+fn update_slider(
+    parent_query: Query<(&Children, &SliderValue)>,
+    mut child_query: Query<&mut Node, With<SliderBkg>>,
+) {
+    for (children, slider_value) in &parent_query {
+        let mut bkg_iter = child_query.iter_many_mut(children);
+        if let Some(mut node) = bkg_iter.fetch_next() {
+            // All nodes are the same width, so `NODE_RECTS[0]` is as good as any other.
+            node.width = px(SLIDERWIDTH * slider_value.value);
+        }
+    }
 }
 
 fn update_clock(
