@@ -30,6 +30,7 @@ impl Plugin for BlackHoleUniverse {
                 update_velocity,
                 update_motion,
                 update_collisions,
+                check_for_gameover,
             )
                 .chain(),
         );
@@ -395,7 +396,7 @@ fn update_motion(
 ) {
     if state.game_alive {
         // first update positions
-        let BOUNDARY = 0.5 * UNIVERSE_SIZE;
+        const BOUNDARY: f32 = 0.5 * UNIVERSE_SIZE;
         let elapsed = time.delta_secs();
 
         for (mut movable, mut transform) in &mut objects {
@@ -465,31 +466,6 @@ fn update_collisions(
             }
         });
 
-        /*
-        let mut to_despawn: BTreeSet<Entity> = BTreeSet::<Entity>::new();
-        let mut to_destroy = CollisionFrame::new();
-        for (entity, movable) in objects.iter() {
-            //let mut set = CollisionSet::new();
-            let mut set = CollisionSet::new();
-            let mut collide = false;
-
-            for (_, item) in objects.iter() {
-                if item != movable {
-                    if item.collided(movable) {
-                        collide = true;
-                        set.append(item);
-                    }
-                }
-            }
-
-            if collide {
-                to_despawn.insert(entity);
-
-                set.append(movable);
-                to_destroy.push(set);
-            }
-        }*/
-
         let to_despawn = to_despawn.lock().unwrap();
         for item in to_despawn.iter() {
             commands.entity(*item).despawn();
@@ -507,47 +483,34 @@ fn update_collisions(
             }
             _ => {}
         }
+    }
+}
 
-        /*
-        let mut to_destroy: BTreeMap<&Movable, Vec<&Movable>> =
-            BTreeMap::<&Movable, Vec<&Movable>>::new();
+fn check_for_gameover(
+    objects: Query<(Entity, &Movable), With<Movable>>,
+    mut state: ResMut<GameState>,
+) {
+    let item_count = objects.count();
+    let mut bh_count: usize = 0;
+    let mut planet_count: usize = 0;
 
-        for (entity, movable) in objects.iter() {
-            let found: Vec<(Entity, &Movable)> = objects
-                .iter()
-                .filter(|x: &(Entity, &Movable)| {
-                    if x.1 != movable {
-                        x.1.collided(movable)
-                    } else {
-                        false
-                    }
-                })
-                .collect();
-
-            if !found.is_empty() {
-                to_despawn.insert(entity);
-
-                let (_entities, tokens): (Vec<Entity>, Vec<&Movable>) = found.into_iter().unzip();
-                to_destroy.insert(movable, tokens);
+    if item_count <= 1 {
+        state.world_alive = false;
+        state.game_alive = false;
+    } else {
+        for (_, movable) in objects {
+            match movable.otype {
+                ObjectType::BlackHole => bh_count += 1,
+                ObjectType::World => planet_count += 1,
+                _ => {}
             }
         }
 
-        for item in to_despawn {
-            commands.entity(item).despawn();
+        if planet_count == 0 {
+            state.world_alive = false;
         }
-
-        let mut destroyed: Vec<u32> = vec![];
-        for (k, v) in to_destroy {
-            if !destroyed.contains(&k.get_id()) {
-                destroyed.push(k.get_id());
-
-                for item in &v {
-                    destroyed.push(item.get_id());
-                }
-
-                let new = Movable::handle_collision(k, &v);
-                spawn_object(&mut commands, &mut meshes, &mut materials, new);
-            }
-        }*/
+        if bh_count == 1 {
+            state.game_alive = false;
+        }
     }
 }
