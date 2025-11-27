@@ -1,4 +1,4 @@
-use crate::objects::clocks::{TotalTime, WorldTime};
+use crate::objects::clocks::{BHCounter, TotalTime, WorldCounter, WorldTime};
 use crate::objects::gamestate::GameState;
 use crate::objects::movables::{
     CollisionFrame, CollisionResult, CollisionSet, Movable, ObjectType, Velocity,
@@ -176,6 +176,58 @@ fn setup_objects(
 
 fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWindow>>) {
     commands
+        .spawn(Node {
+            position_type: PositionType::Absolute,
+            top: px(5),
+            left: px(5),
+
+            //width: Val::Percent(10.0),
+            //height: Val::Percent(10.0),
+            display: Display::Grid, // Use Grid display
+
+            grid_template_columns: vec![GridTrack::flex(1.0), GridTrack::flex(1.0)], // Two equal columns
+            grid_template_rows: vec![GridTrack::flex(1.0), GridTrack::flex(1.0)], // Two equal rows
+            ..Default::default()
+        })
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new("Total Time: "),
+                TextFont {
+                    font_size: 20.0,
+                    ..default()
+                },
+                TextColor(Color::linear_rgba(0.5, 0.5, 0.0, 0.5)),
+            ));
+            parent.spawn((
+                //TextSpan::default(),
+                Text::new("0.00"),
+                TextFont {
+                    font_size: 18.0,
+                    ..default()
+                },
+                TextColor(Color::linear_rgba(1.0, 0.5, 0.0, 0.25)),
+                TotalTime,
+            ));
+            parent.spawn((
+                Text::new("Black Holes: "),
+                TextFont {
+                    font_size: 16.0,
+                    ..default()
+                },
+                TextColor(Color::linear_rgba(0.5, 0.5, 0.0, 0.5)),
+            ));
+            parent.spawn((
+                //TextSpan::default(),
+                Text::new("0"),
+                TextFont {
+                    font_size: 16.0,
+                    ..default()
+                },
+                TextColor(Color::linear_rgba(1.0, 0.5, 0.0, 0.25)),
+                BHCounter,
+            ));
+        });
+    /*commands
         .spawn((
             Text::new("Total Time: "),
             TextFont {
@@ -199,31 +251,83 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
             TextColor(Color::linear_rgba(1.0, 0.5, 0.0, 0.25)),
             TotalTime,
         ));
+    */
 
     commands
-        .spawn((
-            Text::new("World Time: "),
-            TextFont {
-                font_size: 20.0,
-                ..default()
-            },
-            TextColor(Color::linear_rgba(0.5, 0.5, 0.0, 0.5)),
-            Node {
-                position_type: PositionType::Absolute,
-                top: px(5),
-                right: px(5),
-                ..default()
-            },
-        ))
-        .with_child((
-            TextSpan::default(),
-            TextFont {
-                font_size: 18.0,
-                ..default()
-            },
-            TextColor(Color::linear_rgba(1.0, 0.5, 0.0, 0.25)),
-            WorldTime,
-        ));
+        .spawn(Node {
+            position_type: PositionType::Absolute,
+            top: px(5),
+            right: px(-85), //Val::Percent(-5.0),
+
+            //width: Val::Percent(20.0),
+            //height: Val::Percent(10.0),
+            display: Display::Grid, // Use Grid display
+
+            grid_template_columns: vec![GridTrack::flex(1.0), GridTrack::flex(1.0)], // Two equal columns
+            grid_template_rows: vec![GridTrack::flex(1.0), GridTrack::flex(1.0)], // Two equal rows
+            ..Default::default()
+        })
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new("World Time: "),
+                TextFont {
+                    font_size: 20.0,
+                    ..default()
+                },
+                TextColor(Color::linear_rgba(0.5, 0.5, 0.0, 0.5)),
+            ));
+            parent.spawn((
+                Text::new("0.00"),
+                TextFont {
+                    font_size: 18.0,
+                    ..default()
+                },
+                TextColor(Color::linear_rgba(1.0, 0.5, 0.0, 0.25)),
+                WorldTime,
+            ));
+            parent.spawn((
+                Text::new("Planets: "),
+                TextFont {
+                    font_size: 18.0,
+                    ..default()
+                },
+                TextColor(Color::linear_rgba(0.5, 0.5, 0.0, 0.5)),
+            ));
+            parent.spawn((
+                Text::new("0"),
+                TextFont {
+                    font_size: 16.0,
+                    ..default()
+                },
+                TextColor(Color::linear_rgba(1.0, 0.5, 0.0, 0.25)),
+                WorldCounter,
+            ));
+        });
+
+    /*commands
+    .spawn((
+        Text::new("World Time: "),
+        TextFont {
+            font_size: 20.0,
+            ..default()
+        },
+        TextColor(Color::linear_rgba(0.5, 0.5, 0.0, 0.5)),
+        Node {
+            position_type: PositionType::Absolute,
+            top: px(5),
+            right: px(5),
+            ..default()
+        },
+    ))
+    .with_child((
+        TextSpan::default(),
+        TextFont {
+            font_size: 18.0,
+            ..default()
+        },
+        TextColor(Color::linear_rgba(1.0, 0.5, 0.0, 0.25)),
+        WorldTime,
+    ));*/
 
     let mut height_in_pixels = 1000;
     if let Ok(window) = window_query.single() {
@@ -351,20 +455,20 @@ fn update_slider(
 
 fn update_clock(
     time: Res<Time>,
-    mut total_time: Query<&mut TextSpan, (With<TotalTime>, Without<WorldTime>)>,
-    mut world_time: Query<&mut TextSpan, (With<WorldTime>, Without<TotalTime>)>,
+    mut total_time: Query<&mut Text, (With<TotalTime>, Without<WorldTime>)>,
+    mut world_time: Query<&mut Text, (With<WorldTime>, Without<TotalTime>)>,
     state: Res<GameState>,
 ) {
     if state.game_alive {
         for mut clock in &mut total_time {
-            //two dereferences get's handle to the Text child; the TextSpan object
+            //First deref gets the Text object, 2nd gets the internal String
             **clock = format!("{:.2}", time.elapsed_secs_f64());
         }
     }
 
     if state.world_alive {
         for mut clock in &mut world_time {
-            //two dereferences get's handle to the Text child; the TextSpan object
+            //First deref gets the Text object, 2nd gets the internal String
             **clock = format!("{:.2}", time.elapsed_secs_f64());
         }
     }
@@ -488,29 +592,30 @@ fn update_collisions(
 
 fn check_for_gameover(
     objects: Query<(Entity, &Movable), With<Movable>>,
+    mut bh_count_label: Query<&mut Text, (With<BHCounter>, Without<WorldCounter>)>,
+    mut world_count_label: Query<&mut Text, (With<WorldCounter>, Without<BHCounter>)>,
     mut state: ResMut<GameState>,
 ) {
     let item_count = objects.count();
     let mut bh_count: usize = 0;
     let mut planet_count: usize = 0;
 
-    if item_count <= 1 {
-        state.world_alive = false;
-        state.game_alive = false;
-    } else {
-        for (_, movable) in objects {
-            match movable.otype {
-                ObjectType::BlackHole => bh_count += 1,
-                ObjectType::World => planet_count += 1,
-                _ => {}
-            }
-        }
-
-        if planet_count == 0 {
-            state.world_alive = false;
-        }
-        if bh_count == 1 {
-            state.game_alive = false;
+    for (_, movable) in objects {
+        match movable.otype {
+            ObjectType::BlackHole => bh_count += 1,
+            ObjectType::World => planet_count += 1,
+            _ => {}
         }
     }
+
+    if planet_count == 0 {
+        state.world_alive = false;
+    }
+    if bh_count == 1 {
+        state.game_alive = false;
+    }
+
+    //&Text -> Text -> String
+    **bh_count_label.single_mut().unwrap() = format!("{}", bh_count);
+    **world_count_label.single_mut().unwrap() = format!("{}", planet_count);
 }
