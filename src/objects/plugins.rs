@@ -133,7 +133,7 @@ fn setup_objects(
     }
 
     let mut bh_mass_rand = Gauss::new(
-        bh_mass_mean,
+        bh_mass,
         BLACKHOLE_MASS_RNG.upper / 4.0,
         GaussBoundary::ClampBoth((BLACKHOLE_MASS_RNG.lower, BLACKHOLE_MASS_RNG.upper)),
     );
@@ -465,12 +465,18 @@ fn update_slider_results(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    objects: Query<(Entity, &Movable), With<Movable>>,
+    mut objects: Query<(Entity, &mut Movable, &mut Transform), With<Movable>>,
     sliders: Query<(&SliderValue, &SliderType)>,
 ) {
     if state.game_started {
         return;
     }
+
+    let mut count_difference: i32 = 0;
+    let mut bh_mass = 0.0;
+    let mut update_bh_masses = false;
+
+    let bh_mass_mean = (BLACKHOLE_MASS_RNG.upper + BLACKHOLE_MASS_RNG.lower) / 2.0;
 
     let mut position_rand = Gauss::new(
         0.0,
@@ -483,47 +489,82 @@ fn update_slider_results(
         match slider_type {
             SliderType::BHCountSlider => {
                 let bh_count = slider_value;
-                if bh_count.prev_value != bh_count.value {
-                    //then a changed occured
-                    let mut difference = (bh_count.value * BLACKHOLE_COUNT_RNG.upper as f32)
+                count_difference = (bh_count.value * BLACKHOLE_COUNT_RNG.upper as f32)
+                    .max(BLACKHOLE_COUNT_RNG.lower as f32)
+                    .round() as i32
+                    - (bh_count.prev_value * BLACKHOLE_COUNT_RNG.upper as f32)
                         .max(BLACKHOLE_COUNT_RNG.lower as f32)
-                        .round() as i32
-                        - (bh_count.prev_value * BLACKHOLE_COUNT_RNG.upper as f32)
-                            .max(BLACKHOLE_COUNT_RNG.lower as f32)
-                            .round() as i32;
-                    while difference > 0 {
-                        //add
-                        spawn_object(
-                            &mut commands,
-                            &mut meshes,
-                            &mut materials,
-                            Movable::new(&ObjectType::BlackHole)
-                                .set_position(position_rand.sample(), position_rand.sample())
-                                .set_velocity(1200.0, 1000.0)
-                                .set_mass(20.0)
-                                .build(),
-                        );
-                        difference -= 1;
-                    }
-                    if difference < 0 {
-                        //remove
-                        let mut v: Vec<(Entity, &Movable)> = objects.iter().collect();
-                        while difference < 0 {
-                            match v.pop() {
-                                Option::Some((entity, movable)) => {
-                                    if movable.otype == ObjectType::BlackHole {
-                                        destroy_object(&mut commands, entity);
-                                        difference += 1;
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
+                        .round() as i32;
+            }
+            SliderType::BHMassSlider => {
+                bh_mass = slider_value.value * bh_mass_mean;
+                if slider_value.value != slider_value.prev_value {
+                    update_bh_masses = true;
                 }
             }
             _ => {}
         }
+    }
+
+    let mut bh_mass_rand = Gauss::new(
+        bh_mass,
+        BLACKHOLE_MASS_RNG.upper / 4.0,
+        GaussBoundary::ClampBoth((BLACKHOLE_MASS_RNG.lower, BLACKHOLE_MASS_RNG.upper)),
+    );
+
+    if update_bh_masses {
+        for (_entity, mut movable, mut transform) in &mut objects {
+            if movable.otype == ObjectType::BlackHole {
+                let new_mass = bh_mass_rand.sample();
+                let old_mass = movable.size.mass;
+                let ratio = new_mass / old_mass;
+
+                movable.set_mass(new_mass);
+                transform.scale *= ratio;
+            }
+        }
+    }
+
+    while count_difference > 0 {
+        //add
+        spawn_object(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            Movable::new(&ObjectType::BlackHole)
+                .set_position(position_rand.sample(), position_rand.sample())
+                .set_velocity(1200.0, 1000.0)
+                .set_mass(bh_mass_rand.sample())
+                .build(),
+        );
+        count_difference -= 1;
+    }
+    if count_difference < 0 {
+        //remove
+        
+        for (entity, movable, _transform) in &objects {
+            if movable.otype == ObjectType::BlackHole {
+                    destroy_object(&mut commands, entity);
+                    count_difference += 1;
+                    if count_difference >= 0 {
+                        break;
+                    }
+            }
+        }
+        
+       /* let mut v: Vec<(Entity, &Movable, &Transform)> = objects.into_iter().collect();
+        
+        while count_difference < 0 {
+            match v.pop() {
+                Option::Some((entity, movable, _mesh)) => {
+                    if movable.otype == ObjectType::BlackHole {
+                        destroy_object(&mut commands, entity);
+                        count_difference += 1;
+                    }
+                }
+                _ => {}
+            }
+        }*/
     }
 }
 
