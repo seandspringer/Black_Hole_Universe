@@ -4,6 +4,10 @@ use crate::objects::gauss::{Gauss, GaussBoundary};
 use crate::objects::movables::{
     CollisionFrame, CollisionResult, CollisionSet, Movable, ObjectType, Velocity,
 };
+use crate::objects::sliders::{
+    BLACKHOLE_COUNT_RNG, BLACKHOLE_MASS_RNG, SLIDERWIDTH, SliderBkg, SliderGraphic, SliderType,
+    SliderValue, generate_slider,
+};
 use crate::objects::traits::collisions::{CollisionDetection, Position, Shapes};
 use bevy::camera::ScalingMode;
 use bevy::camera::Viewport;
@@ -18,9 +22,6 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 const UNIVERSE_SIZE: f32 = 50_000.0f32;
-
-const MAX_BH_START: u32 = 1000;
-const MIN_BH_START: u32 = 3;
 
 pub struct BlackHoleUniverse;
 
@@ -45,27 +46,6 @@ impl Plugin for BlackHoleUniverse {
         );
     }
 }
-
-#[derive(Component)]
-struct SliderValue {
-    value: f32,
-    prev_value: f32,
-}
-impl Default for SliderValue {
-    fn default() -> Self {
-        SliderValue {
-            value: 0.5,
-            prev_value: 0.5,
-        }
-    }
-}
-const SLIDERWIDTH: f32 = 100.0;
-
-#[derive(Component)]
-struct SliderBkg;
-
-#[derive(Component)]
-struct BHCountSlider;
 
 /// not called directly from a system/event loop but is instead a helper function
 /// called by either setup_objects or slider motion, etc
@@ -123,18 +103,40 @@ fn setup_objects(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    bh_number: Query<&SliderValue, With<BHCountSlider>>,
+    sliders: Query<(&SliderValue, &SliderType)>,
 ) {
-    let bh_count = (bh_number.single().unwrap().value * MAX_BH_START as f32)
-        .max(MIN_BH_START as f32)
-        .round() as u32;
+    let mut bh_count = 0;
+    let mut bh_mass = 0.0;
     let mut position_rand = Gauss::new(
         0.0,
         UNIVERSE_SIZE / 4.0,
         GaussBoundary::WrapBoth((-UNIVERSE_SIZE / 2.0, UNIVERSE_SIZE / 2.0)),
     );
 
-    println!("{}", bh_count);
+    let bh_mass_mean = (BLACKHOLE_MASS_RNG.upper + BLACKHOLE_MASS_RNG.lower) / 2.0;
+
+    for (slider_value, slider_type) in sliders {
+        match slider_type {
+            SliderType::BHCountSlider => {
+                bh_count = (slider_value.value * BLACKHOLE_COUNT_RNG.upper as f32)
+                    .max(BLACKHOLE_COUNT_RNG.lower as f32)
+                    .round() as u32;
+
+                println!("count = {}", bh_count);
+            }
+            SliderType::BHMassSlider => {
+                bh_mass = slider_value.value * bh_mass_mean;
+                println!("ave mass = {}", bh_mass);
+            }
+            _ => {}
+        }
+    }
+
+    let mut bh_mass_rand = Gauss::new(
+        bh_mass_mean,
+        BLACKHOLE_MASS_RNG.upper / 4.0,
+        GaussBoundary::ClampBoth((BLACKHOLE_MASS_RNG.lower, BLACKHOLE_MASS_RNG.upper)),
+    );
 
     for _ in 0..bh_count {
         spawn_object(
@@ -144,7 +146,7 @@ fn setup_objects(
             Movable::new(&ObjectType::BlackHole)
                 .set_position(position_rand.sample(), position_rand.sample())
                 .set_velocity(1200.0, 1000.0)
-                .set_mass(20.0)
+                .set_mass(bh_mass_rand.sample())
                 .build(),
         );
     }
@@ -334,7 +336,7 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
         height_in_pixels = window.resolution.physical_height();
     }
 
-    // spawn the Black Hole Settings group and the slide bars
+    // spawn the Black Hole Settings group container and the title bar
     let left_container = commands
         .spawn((
             Node {
@@ -356,6 +358,17 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
         ))
         .id();
 
+    let left_header = commands
+        .spawn((
+            Text::new("Black Hole Settings"),
+            TextFont {
+                font_size: 16.0,
+                ..default()
+            },
+            TextColor(Color::linear_rgba(0.9, 0.9, 0.9, 0.5)),
+        ))
+        .id();
+    /*
     let bh_count_text = commands
         .spawn((
             Text::new("Count"),
@@ -385,7 +398,7 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
             Interaction::None,
             RelativeCursorPosition::default(),
             SliderValue::default(),
-            BHCountSlider,
+            SliderType::BHCountSlider,
         ))
         .id();
 
@@ -404,21 +417,47 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
         ))
         .id();
 
-    let left_header = commands
-        .spawn((
-            Text::new("Black Hole Settings"),
-            TextFont {
-                font_size: 16.0,
-                ..default()
-            },
-            TextColor(Color::linear_rgba(0.9, 0.9, 0.9, 0.5)),
-        ))
-        .id();
+
 
     commands.entity(left_container).add_child(left_header);
     commands.entity(bh_count_slider).add_child(bh_count_bkg);
     commands.entity(bh_count_slider).add_child(bh_count_text);
     commands.entity(left_container).add_child(bh_count_slider);
+    */
+
+    commands.entity(left_container).add_child(left_header);
+
+    //spawn blackhole count slider
+    let count_slider = generate_slider(SliderType::BHCountSlider, "Count");
+    let count_base = commands
+        .spawn((
+            count_slider.base,
+            Interaction::None,
+            RelativeCursorPosition::default(),
+            SliderValue::default(),
+        ))
+        .id();
+    let count_bkg = commands.spawn((count_slider.bkg, SliderBkg)).id();
+    let count_text = commands.spawn(count_slider.text).id();
+    commands.entity(count_base).add_child(count_bkg);
+    commands.entity(count_base).add_child(count_text);
+    commands.entity(left_container).add_child(count_base);
+
+    //spawn blackhole mass slider
+    let mass_slider = generate_slider(SliderType::BHMassSlider, "Masses");
+    let mass_base = commands
+        .spawn((
+            mass_slider.base,
+            Interaction::None,
+            RelativeCursorPosition::default(),
+            SliderValue::default(),
+        ))
+        .id();
+    let mass_bkg = commands.spawn((mass_slider.bkg, SliderBkg)).id();
+    let mass_text = commands.spawn(mass_slider.text).id();
+    commands.entity(mass_base).add_child(mass_bkg);
+    commands.entity(mass_base).add_child(mass_text);
+    commands.entity(left_container).add_child(mass_base);
 }
 
 fn update_slider_results(
@@ -427,7 +466,7 @@ fn update_slider_results(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     objects: Query<(Entity, &Movable), With<Movable>>,
-    bh_number: Query<&SliderValue, With<BHCountSlider>>,
+    sliders: Query<(&SliderValue, &SliderType)>,
 ) {
     if state.game_started {
         return;
@@ -440,43 +479,50 @@ fn update_slider_results(
     );
 
     //check black hole number for changes
-    let bh_count = bh_number.single().unwrap();
-    if bh_count.prev_value != bh_count.value {
-        //then a changed occured
-        let mut difference = (bh_count.value * MAX_BH_START as f32)
-            .max(MIN_BH_START as f32)
-            .round() as i32
-            - (bh_count.prev_value * MAX_BH_START as f32)
-                .max(MIN_BH_START as f32)
-                .round() as i32;
-        while difference > 0 {
-            //add
-            spawn_object(
-                &mut commands,
-                &mut meshes,
-                &mut materials,
-                Movable::new(&ObjectType::BlackHole)
-                    .set_position(position_rand.sample(), position_rand.sample())
-                    .set_velocity(1200.0, 1000.0)
-                    .set_mass(20.0)
-                    .build(),
-            );
-            difference -= 1;
-        }
-        if difference < 0 {
-            //remove
-            let mut v: Vec<(Entity, &Movable)> = objects.iter().collect();
-            while difference < 0 {
-                match v.pop() {
-                    Option::Some((entity, movable)) => {
-                        if movable.otype == ObjectType::BlackHole {
-                            destroy_object(&mut commands, entity);
-                            difference += 1;
+    for (slider_value, slider_type) in sliders {
+        match slider_type {
+            SliderType::BHCountSlider => {
+                let bh_count = slider_value;
+                if bh_count.prev_value != bh_count.value {
+                    //then a changed occured
+                    let mut difference = (bh_count.value * BLACKHOLE_COUNT_RNG.upper as f32)
+                        .max(BLACKHOLE_COUNT_RNG.lower as f32)
+                        .round() as i32
+                        - (bh_count.prev_value * BLACKHOLE_COUNT_RNG.upper as f32)
+                            .max(BLACKHOLE_COUNT_RNG.lower as f32)
+                            .round() as i32;
+                    while difference > 0 {
+                        //add
+                        spawn_object(
+                            &mut commands,
+                            &mut meshes,
+                            &mut materials,
+                            Movable::new(&ObjectType::BlackHole)
+                                .set_position(position_rand.sample(), position_rand.sample())
+                                .set_velocity(1200.0, 1000.0)
+                                .set_mass(20.0)
+                                .build(),
+                        );
+                        difference -= 1;
+                    }
+                    if difference < 0 {
+                        //remove
+                        let mut v: Vec<(Entity, &Movable)> = objects.iter().collect();
+                        while difference < 0 {
+                            match v.pop() {
+                                Option::Some((entity, movable)) => {
+                                    if movable.otype == ObjectType::BlackHole {
+                                        destroy_object(&mut commands, entity);
+                                        difference += 1;
+                                    }
+                                }
+                                _ => {}
+                            }
                         }
                     }
-                    _ => {}
                 }
             }
+            _ => {}
         }
     }
 }

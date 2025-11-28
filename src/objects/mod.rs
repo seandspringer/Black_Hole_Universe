@@ -3,6 +3,7 @@ pub mod gamestate;
 pub mod gauss;
 pub mod movables;
 pub mod plugins;
+pub mod sliders;
 pub mod traits;
 
 pub use self::plugins::BlackHoleUniverse;

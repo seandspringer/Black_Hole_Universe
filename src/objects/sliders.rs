@@ -1,0 +1,121 @@
+use bevy::{prelude::*, ui::RelativeCursorPosition};
+
+pub const SLIDERWIDTH: f32 = 100.0;
+
+#[derive(Component)]
+pub struct Range<T> {
+    pub lower: T,
+    pub upper: T,
+}
+
+pub const BLACKHOLE_COUNT_RNG: Range<u32> = Range {
+    lower: 3,
+    upper: 1000,
+};
+
+pub const BLACKHOLE_MASS_RNG: Range<f32> = Range {
+    lower: 1.0,
+    upper: 100.0,
+};
+
+#[derive(Component, Debug)]
+pub struct SliderValue {
+    pub value: f32,
+    pub prev_value: f32,
+}
+impl Default for SliderValue {
+    fn default() -> Self {
+        SliderValue {
+            value: 0.5,
+            prev_value: 0.5,
+        }
+    }
+}
+
+#[derive(Component)]
+pub enum SliderType {
+    BHCountSlider,
+    BHMassSlider,
+}
+
+#[derive(Component)]
+pub struct SliderBkg;
+
+#[derive(Bundle)]
+pub struct SliderBase {
+    node: Node,
+    bordercolor: BorderColor,
+    outline: Outline,
+    //pub interaction: Interaction,
+    //pub relative_cursor_pos: RelativeCursorPosition,
+    //pub slider_value: SliderValue,
+    pub bevy_identifier: SliderType,
+}
+
+#[derive(Bundle)]
+pub struct SliderText {
+    text: Text,
+    font: TextFont,
+    color: TextColor,
+    layout: TextLayout,
+}
+
+#[derive(Bundle)]
+pub struct SliderBackground {
+    node: Node,
+    color: BackgroundColor,
+    //pub bevy_identifier: SliderBkg,
+}
+
+#[derive(Bundle)]
+pub struct SliderGraphic {
+    pub base: SliderBase,
+    pub text: SliderText,
+    pub bkg: SliderBackground,
+}
+
+pub fn generate_slider(stype: SliderType, text: &str) -> SliderGraphic {
+    let base = SliderBase {
+        node: Node {
+            //position_type: PositionType::Absolute,
+            height: px(50.0),
+            width: px(SLIDERWIDTH),
+            align_items: AlignItems::Center,
+            justify_items: JustifyItems::Center,
+            align_content: AlignContent::Center,
+            justify_content: JustifyContent::Center,
+            ..default()
+        },
+        bordercolor: BorderColor::all(Color::WHITE),
+        outline: Outline::new(px(1), Val::ZERO, Color::WHITE),
+        //interaction: Interaction::None,
+        //relative_cursor_pos: RelativeCursorPosition::default(),
+        //slider_value: SliderValue::default(),
+        bevy_identifier: stype,
+    };
+
+    let text = SliderText {
+        text: Text::new(text),
+        font: TextFont {
+            font_size: 16.0,
+            ..default()
+        },
+        color: TextColor(Color::WHITE),
+        layout: TextLayout::new_with_justify(Justify::Center),
+    };
+
+    let bkg = SliderBackground {
+        node: Node {
+            position_type: PositionType::Absolute,
+            top: px(0),
+            left: px(0),
+            height: px(50.0),
+            width: px(SLIDERWIDTH / 2.0),
+            ..default()
+        },
+        color: BackgroundColor(Color::linear_rgba(0.0, 0.4, 0.0, 1.0)),
+        //bevy_identifier: SliderBkg,
+    };
+
+    SliderGraphic { base, text, bkg }
+}
