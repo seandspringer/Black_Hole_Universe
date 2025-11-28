@@ -16,6 +16,15 @@ pub struct Position {
 }
 
 impl Position {
+    pub fn new(x: f32, y: f32) -> Position {
+        Position {
+            x,
+            y,
+            x_prev: x,
+            y_prev: y,
+        }
+    }
+
     pub fn distance_to(&self, other: &Position) -> f32 {
         ((self.x - other.x).squared() + (self.y - other.y).squared()).sqrt()
     }

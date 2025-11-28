@@ -1,5 +1,6 @@
 use crate::objects::clocks::{BHCounter, TotalTime, WorldCounter, WorldTime};
 use crate::objects::gamestate::GameState;
+use crate::objects::gauss::{Gauss, GaussBoundary};
 use crate::objects::movables::{
     CollisionFrame, CollisionResult, CollisionSet, Movable, ObjectType, Velocity,
 };
@@ -9,12 +10,17 @@ use bevy::camera::Viewport;
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 use bevy::window::PrimaryWindow;
+use rand::rng;
+use rand_distr::{Distribution, Normal};
 use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-const UNIVERSE_SIZE: f32 = 100_000.0f32;
+const UNIVERSE_SIZE: f32 = 50_000.0f32;
+
+const MAX_BH_START: u32 = 1000;
+const MIN_BH_START: u32 = 3;
 
 pub struct BlackHoleUniverse;
 
@@ -22,7 +28,10 @@ impl Plugin for BlackHoleUniverse {
     fn build(&self, app: &mut App) {
         app.insert_resource(GameState::new());
         app.add_systems(Startup, (setup_field, setup_hub, setup_objects).chain());
-        app.add_systems(Update, (drag_slider, update_slider).chain());
+        app.add_systems(
+            Update,
+            (drag_slider, update_slider, update_slider_results).chain(),
+        );
         app.add_systems(
             Update,
             (
@@ -38,13 +47,16 @@ impl Plugin for BlackHoleUniverse {
 }
 
 #[derive(Component)]
-
 struct SliderValue {
     value: f32,
+    prev_value: f32,
 }
 impl Default for SliderValue {
     fn default() -> Self {
-        SliderValue { value: 0.5 }
+        SliderValue {
+            value: 0.5,
+            prev_value: 0.5,
+        }
     }
 }
 const SLIDERWIDTH: f32 = 100.0;
@@ -52,10 +64,15 @@ const SLIDERWIDTH: f32 = 100.0;
 #[derive(Component)]
 struct SliderBkg;
 
+#[derive(Component)]
+struct BHCountSlider;
+
+/// not called directly from a system/event loop but is instead a helper function
+/// called by either setup_objects or slider motion, etc
 fn spawn_object(
-    mut commands: &mut Commands,
-    mut meshes: &mut ResMut<Assets<Mesh>>,
-    mut materials: &mut ResMut<Assets<ColorMaterial>>,
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
     object: Movable,
 ) {
     let color = Color::linear_rgb(0.9, 0.9, 0.9);
@@ -66,6 +83,10 @@ fn spawn_object(
         Transform::from_xyz(object.position.x, object.position.y, 0.0),
         object,
     ));
+}
+
+fn destroy_object(commands: &mut Commands, entity: Entity) {
+    commands.entity(entity).despawn();
 }
 
 fn setup_field(
@@ -102,9 +123,34 @@ fn setup_objects(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    bh_number: Query<&SliderValue, With<BHCountSlider>>,
 ) {
+    let bh_count = (bh_number.single().unwrap().value * MAX_BH_START as f32)
+        .max(MIN_BH_START as f32)
+        .round() as u32;
+    let mut position_rand = Gauss::new(
+        0.0,
+        UNIVERSE_SIZE / 4.0,
+        GaussBoundary::WrapBoth((-UNIVERSE_SIZE / 2.0, UNIVERSE_SIZE / 2.0)),
+    );
+
+    println!("{}", bh_count);
+
+    for _ in 0..bh_count {
+        spawn_object(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            Movable::new(&ObjectType::BlackHole)
+                .set_position(position_rand.sample(), position_rand.sample())
+                .set_velocity(1200.0, 1000.0)
+                .set_mass(20.0)
+                .build(),
+        );
+    }
+
     //for i in 0..black_holes.0 {
-    spawn_object(
+    /*spawn_object(
         &mut commands,
         &mut meshes,
         &mut materials,
@@ -113,7 +159,8 @@ fn setup_objects(
             .set_velocity(1200.0, 1000.0)
             .set_mass(20.0)
             .build(),
-    );
+    );*/
+
     /*
         commands.spawn((
             Mesh2d(meshes.add(Circle::new(50.0))),
@@ -127,7 +174,7 @@ fn setup_objects(
         ));
     */
 
-    spawn_object(
+    /*spawn_object(
         &mut commands,
         &mut meshes,
         &mut materials,
@@ -136,9 +183,9 @@ fn setup_objects(
             .set_velocity(-1200.0, -1000.0)
             .set_mass(21.0)
             .build(),
-    );
+    );*/
 
-    spawn_object(
+    /*spawn_object(
         &mut commands,
         &mut meshes,
         &mut materials,
@@ -147,7 +194,8 @@ fn setup_objects(
             .set_velocity(0.0, 0.0)
             .set_mass(100.0)
             .build(),
-    );
+    );*/
+
     /*commands.spawn((
         Mesh2d(meshes.add(Circle::new(25.0))),
         MeshMaterial2d(materials.add(hole_color)),
@@ -175,6 +223,7 @@ fn setup_objects(
 }
 
 fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWindow>>) {
+    //spawn top left text: Total time and black hole counter
     commands
         .spawn(Node {
             position_type: PositionType::Absolute,
@@ -227,32 +276,8 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
                 BHCounter,
             ));
         });
-    /*commands
-        .spawn((
-            Text::new("Total Time: "),
-            TextFont {
-                font_size: 20.0,
-                ..default()
-            },
-            TextColor(Color::linear_rgba(0.5, 0.5, 0.0, 0.5)),
-            Node {
-                position_type: PositionType::Absolute,
-                top: px(5),
-                left: px(5),
-                ..default()
-            },
-        ))
-        .with_child((
-            TextSpan::default(),
-            TextFont {
-                font_size: 18.0,
-                ..default()
-            },
-            TextColor(Color::linear_rgba(1.0, 0.5, 0.0, 0.25)),
-            TotalTime,
-        ));
-    */
 
+    // spawn top right text: World Time and Planets counter
     commands
         .spawn(Node {
             position_type: PositionType::Absolute,
@@ -304,41 +329,12 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
             ));
         });
 
-    /*commands
-    .spawn((
-        Text::new("World Time: "),
-        TextFont {
-            font_size: 20.0,
-            ..default()
-        },
-        TextColor(Color::linear_rgba(0.5, 0.5, 0.0, 0.5)),
-        Node {
-            position_type: PositionType::Absolute,
-            top: px(5),
-            right: px(5),
-            ..default()
-        },
-    ))
-    .with_child((
-        TextSpan::default(),
-        TextFont {
-            font_size: 18.0,
-            ..default()
-        },
-        TextColor(Color::linear_rgba(1.0, 0.5, 0.0, 0.25)),
-        WorldTime,
-    ));*/
-
     let mut height_in_pixels = 1000;
     if let Ok(window) = window_query.single() {
         height_in_pixels = window.resolution.physical_height();
-        println!(
-            "{} {}",
-            window.resolution.physical_height(),
-            window.resolution.physical_width()
-        )
     }
 
+    // spawn the Black Hole Settings group and the slide bars
     let left_container = commands
         .spawn((
             Node {
@@ -389,6 +385,7 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
             Interaction::None,
             RelativeCursorPosition::default(),
             SliderValue::default(),
+            BHCountSlider,
         ))
         .id();
 
@@ -424,22 +421,87 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
     commands.entity(left_container).add_child(bh_count_slider);
 }
 
+fn update_slider_results(
+    state: Res<GameState>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    objects: Query<(Entity, &Movable), With<Movable>>,
+    bh_number: Query<&SliderValue, With<BHCountSlider>>,
+) {
+    if state.game_started {
+        return;
+    }
+
+    let mut position_rand = Gauss::new(
+        0.0,
+        UNIVERSE_SIZE / 4.0,
+        GaussBoundary::WrapBoth((-UNIVERSE_SIZE / 2.0, UNIVERSE_SIZE / 2.0)),
+    );
+
+    //check black hole number for changes
+    let bh_count = bh_number.single().unwrap();
+    if bh_count.prev_value != bh_count.value {
+        //then a changed occured
+        let mut difference = (bh_count.value * MAX_BH_START as f32)
+            .max(MIN_BH_START as f32)
+            .round() as i32
+            - (bh_count.prev_value * MAX_BH_START as f32)
+                .max(MIN_BH_START as f32)
+                .round() as i32;
+        while difference > 0 {
+            //add
+            spawn_object(
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+                Movable::new(&ObjectType::BlackHole)
+                    .set_position(position_rand.sample(), position_rand.sample())
+                    .set_velocity(1200.0, 1000.0)
+                    .set_mass(20.0)
+                    .build(),
+            );
+            difference -= 1;
+        }
+        if difference < 0 {
+            //remove
+            let mut v: Vec<(Entity, &Movable)> = objects.iter().collect();
+            while difference < 0 {
+                match v.pop() {
+                    Option::Some((entity, movable)) => {
+                        if movable.otype == ObjectType::BlackHole {
+                            destroy_object(&mut commands, entity);
+                            difference += 1;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
 fn drag_slider(
     mut interaction_query: Query<(&Interaction, &RelativeCursorPosition, &mut SliderValue)>,
 ) {
     for (interaction, relative_cursor, mut slider_value) in &mut interaction_query {
+        //check that mouse button is down
         if !matches!(*interaction, Interaction::Pressed) {
             continue;
         }
 
+        //check that it was pressed inside the slider:
         let Some(pos) = relative_cursor.normalized else {
             continue;
         };
 
-        slider_value.value = 0.5 + pos.x.clamp(-0.5, 0.5);
+        //slider takes [0:1] but pos.x.clamp is [-0.5:0.5] so this works as expected:
+        slider_value.prev_value = slider_value.value;
+        slider_value.value = 0.5 + pos.x.clamp(-0.5, 0.5); //percentage
     }
 }
 
+/// physically updates the background of the slider to give the movement response
 fn update_slider(
     parent_query: Query<(&Children, &SliderValue)>,
     mut child_query: Query<&mut Node, With<SliderBkg>>,
@@ -447,7 +509,6 @@ fn update_slider(
     for (children, slider_value) in &parent_query {
         let mut bkg_iter = child_query.iter_many_mut(children);
         if let Some(mut node) = bkg_iter.fetch_next() {
-            // All nodes are the same width, so `NODE_RECTS[0]` is as good as any other.
             node.width = px(SLIDERWIDTH * slider_value.value);
         }
     }
@@ -459,17 +520,19 @@ fn update_clock(
     mut world_time: Query<&mut Text, (With<WorldTime>, Without<TotalTime>)>,
     state: Res<GameState>,
 ) {
-    if state.game_alive {
-        for mut clock in &mut total_time {
-            //First deref gets the Text object, 2nd gets the internal String
-            **clock = format!("{:.2}", time.elapsed_secs_f64());
+    if state.game_started {
+        if state.game_alive {
+            for mut clock in &mut total_time {
+                //First deref gets the Text object, 2nd gets the internal String
+                **clock = format!("{:.2}", time.elapsed_secs_f64());
+            }
         }
-    }
 
-    if state.world_alive {
-        for mut clock in &mut world_time {
-            //First deref gets the Text object, 2nd gets the internal String
-            **clock = format!("{:.2}", time.elapsed_secs_f64());
+        if state.world_alive {
+            for mut clock in &mut world_time {
+                //First deref gets the Text object, 2nd gets the internal String
+                **clock = format!("{:.2}", time.elapsed_secs_f64());
+            }
         }
     }
 }
@@ -479,7 +542,7 @@ fn update_velocity(
     mut objects: Query<&mut Movable, With<Movable>>,
     state: Res<GameState>,
 ) {
-    if state.game_alive {
+    if state.game_started && state.game_alive {
         let vec: Vec<&Movable> = objects.iter().collect();
         let mut velocities: Vec<Velocity> = Vec::new();
         // first update positions
@@ -498,7 +561,7 @@ fn update_motion(
     mut objects: Query<(&mut Movable, &mut Transform), With<Movable>>,
     state: Res<GameState>,
 ) {
-    if state.game_alive {
+    if state.game_started && state.game_alive {
         // first update positions
         const BOUNDARY: f32 = 0.5 * UNIVERSE_SIZE;
         let elapsed = time.delta_secs();
@@ -536,7 +599,7 @@ fn update_collisions(
     state: Res<GameState>,
 ) {
     // next check for collisions
-    if state.game_alive {
+    if state.game_started && state.game_alive {
         //this set is designed so that the order of the two colliding objects doesn't matter
         //i.e. there will not be duplicates in this list
 
@@ -572,7 +635,8 @@ fn update_collisions(
 
         let to_despawn = to_despawn.lock().unwrap();
         for item in to_despawn.iter() {
-            commands.entity(*item).despawn();
+            destroy_object(&mut commands, *item);
+            //commands.entity(*item).despawn();
         }
 
         match to_destroy.lock().unwrap().collect() {
@@ -600,22 +664,24 @@ fn check_for_gameover(
     let mut bh_count: usize = 0;
     let mut planet_count: usize = 0;
 
-    for (_, movable) in objects {
-        match movable.otype {
-            ObjectType::BlackHole => bh_count += 1,
-            ObjectType::World => planet_count += 1,
-            _ => {}
+    if state.game_started {
+        for (_, movable) in objects {
+            match movable.otype {
+                ObjectType::BlackHole => bh_count += 1,
+                ObjectType::World => planet_count += 1,
+                _ => {}
+            }
         }
-    }
 
-    if planet_count == 0 {
-        state.world_alive = false;
-    }
-    if bh_count == 1 {
-        state.game_alive = false;
-    }
+        if planet_count == 0 {
+            state.world_alive = false;
+        }
+        if bh_count == 1 {
+            state.game_alive = false;
+        }
 
-    //&Text -> Text -> String
-    **bh_count_label.single_mut().unwrap() = format!("{}", bh_count);
-    **world_count_label.single_mut().unwrap() = format!("{}", planet_count);
+        //&Text -> Text -> String
+        **bh_count_label.single_mut().unwrap() = format!("{}", bh_count);
+        **world_count_label.single_mut().unwrap() = format!("{}", planet_count);
+    }
 }
