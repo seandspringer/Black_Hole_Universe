@@ -458,6 +458,38 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
     commands.entity(mass_base).add_child(mass_bkg);
     commands.entity(mass_base).add_child(mass_text);
     commands.entity(left_container).add_child(mass_base);
+
+    //spawn blackhole velocity slider
+    let mass_slider = generate_slider(SliderType::BHVelocitySlider, "Velocity");
+    let mass_base = commands
+        .spawn((
+            mass_slider.base,
+            Interaction::None,
+            RelativeCursorPosition::default(),
+            SliderValue::default(),
+        ))
+        .id();
+    let mass_bkg = commands.spawn((mass_slider.bkg, SliderBkg)).id();
+    let mass_text = commands.spawn(mass_slider.text).id();
+    commands.entity(mass_base).add_child(mass_bkg);
+    commands.entity(mass_base).add_child(mass_text);
+    commands.entity(left_container).add_child(mass_base);
+
+    //spawn blackhole density slider
+    let mass_slider = generate_slider(SliderType::BHDensitySlider, "Density");
+    let mass_base = commands
+        .spawn((
+            mass_slider.base,
+            Interaction::None,
+            RelativeCursorPosition::default(),
+            SliderValue::default(),
+        ))
+        .id();
+    let mass_bkg = commands.spawn((mass_slider.bkg, SliderBkg)).id();
+    let mass_text = commands.spawn(mass_slider.text).id();
+    commands.entity(mass_base).add_child(mass_bkg);
+    commands.entity(mass_base).add_child(mass_text);
+    commands.entity(left_container).add_child(mass_base);
 }
 
 fn update_slider_results(
@@ -541,19 +573,19 @@ fn update_slider_results(
     }
     if count_difference < 0 {
         //remove
-        
+
         for (entity, movable, _transform) in &objects {
             if movable.otype == ObjectType::BlackHole {
-                    destroy_object(&mut commands, entity);
-                    count_difference += 1;
-                    if count_difference >= 0 {
-                        break;
-                    }
+                destroy_object(&mut commands, entity);
+                count_difference += 1;
+                if count_difference >= 0 {
+                    break;
+                }
             }
         }
-        
-       /* let mut v: Vec<(Entity, &Movable, &Transform)> = objects.into_iter().collect();
-        
+
+        /* let mut v: Vec<(Entity, &Movable, &Transform)> = objects.into_iter().collect();
+
         while count_difference < 0 {
             match v.pop() {
                 Option::Some((entity, movable, _mesh)) => {

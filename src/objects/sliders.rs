@@ -36,6 +36,8 @@ impl Default for SliderValue {
 pub enum SliderType {
     BHCountSlider,
     BHMassSlider,
+    BHDensitySlider,
+    BHVelocitySlider,
 }
 
 #[derive(Component)]
