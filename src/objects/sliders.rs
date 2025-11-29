@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
-pub const SLIDERWIDTH: f32 = 100.0;
+pub const SLIDERWIDTH: f32 = 100.0; //pixels
+pub const POSSTDEVMIN: f32 = 0.05; //tightest grouping allowed
 
 #[derive(Component)]
 pub struct Range<T> {

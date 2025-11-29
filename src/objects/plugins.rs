@@ -5,8 +5,8 @@ use crate::objects::movables::{
     CollisionFrame, CollisionResult, CollisionSet, Movable, ObjectType, Velocity,
 };
 use crate::objects::sliders::{
-    BLACKHOLE_COUNT_RNG, BLACKHOLE_MASS_RNG, BLACKHOLE_VEL_RNG, SLIDERWIDTH, SliderBkg,
-    SliderGraphic, SliderType, SliderValue, generate_slider,
+    BLACKHOLE_COUNT_RNG, BLACKHOLE_MASS_RNG, BLACKHOLE_VEL_RNG, POSSTDEVMIN, SLIDERWIDTH,
+    SliderBkg, SliderGraphic, SliderType, SliderValue, generate_slider,
 };
 use crate::objects::traits::collisions::{CollisionDetection, Position, Shapes};
 use bevy::camera::ScalingMode;
@@ -132,10 +132,9 @@ fn setup_objects(
             }
             SliderType::BHDensitySlider => {
                 //use 1-slider value so that max on the bar squeezes the universe the most
-                bh_pos_std = (1.0 - slider_value.value) * UNIVERSE_SIZE / 4.0; //universesize/4 is max - basically fills the universe
+                bh_pos_std = (1.0 - slider_value.value + POSSTDEVMIN) * UNIVERSE_SIZE / 4.0; //universesize/4 is max - basically fills the universe
                 println!("pos std = {}", bh_pos_std);
             }
-            _ => {}
         }
     }
 
@@ -398,14 +397,12 @@ fn update_slider_results(
     let mut count_difference: i32 = 0;
     let mut bh_mass = 0.0;
     let mut update_bh_masses = false;
+    let mut bh_vel = 0.0;
+    let mut update_bh_vel = false;
+    let mut bh_pos_std = 0.0;
+    let mut update_bh_pos = false;
 
     let bh_mass_mean = (BLACKHOLE_MASS_RNG.upper + BLACKHOLE_MASS_RNG.lower) / 2.0;
-
-    let mut position_rand = Gauss::new(
-        0.0,
-        UNIVERSE_SIZE / 4.0,
-        GaussBoundary::WrapBoth((-UNIVERSE_SIZE / 2.0, UNIVERSE_SIZE / 2.0)),
-    );
 
     //check black hole number for changes
     for (slider_value, slider_type) in sliders {
@@ -425,14 +422,39 @@ fn update_slider_results(
                     update_bh_masses = true;
                 }
             }
-            _ => {}
+            SliderType::BHVelocitySlider => {
+                bh_vel =
+                    slider_value.value * (BLACKHOLE_VEL_RNG.upper + BLACKHOLE_VEL_RNG.lower) / 2.0;
+                if slider_value.value != slider_value.prev_value {
+                    update_bh_vel = true;
+                }
+            }
+            SliderType::BHDensitySlider => {
+                //use 1-slider value so that max on the bar squeezes the universe the most
+                bh_pos_std = (1.0 - slider_value.value + POSSTDEVMIN) * UNIVERSE_SIZE / 4.0; //universesize/4 is max - basically fills the universe
+                if slider_value.value != slider_value.prev_value {
+                    update_bh_pos = true;
+                }
+            }
         }
     }
+
+    let mut position_rand = Gauss::new(
+        0.0,
+        bh_pos_std,
+        GaussBoundary::WrapBoth((-UNIVERSE_SIZE / 2.0, UNIVERSE_SIZE / 2.0)),
+    );
 
     let mut bh_mass_rand = Gauss::new(
         bh_mass,
         BLACKHOLE_MASS_RNG.upper / 4.0,
         GaussBoundary::ClampBoth((BLACKHOLE_MASS_RNG.lower, BLACKHOLE_MASS_RNG.upper)),
+    );
+
+    let mut bh_vel_rand = Gauss::new(
+        bh_vel,
+        BLACKHOLE_VEL_RNG.upper / 4.0,
+        GaussBoundary::ClampBoth((BLACKHOLE_VEL_RNG.lower, BLACKHOLE_VEL_RNG.upper)),
     );
 
     if update_bh_masses {
@@ -448,23 +470,47 @@ fn update_slider_results(
         }
     }
 
+    if update_bh_vel {
+        for (_entity, mut movable, mut _transform) in &mut objects {
+            if movable.otype == ObjectType::BlackHole {
+                movable.set_velocity(bh_vel_rand.sample(), bh_vel_rand.sample());
+            }
+        }
+    }
+
+    if update_bh_pos {
+        for (_entity, mut movable, mut transform) in &mut objects {
+            if movable.otype == ObjectType::BlackHole {
+                let new_x = position_rand.sample();
+                let new_y = position_rand.sample();
+                let old_x = movable.position.x;
+                let old_y = movable.position.y;
+                let diff_x = new_x - old_x;
+                let diff_y = new_y - old_y;
+
+                movable.set_position(new_x, new_y);
+                transform.translation.x += diff_x;
+                transform.translation.y += diff_y;
+            }
+        }
+    }
+
+    //add any new objects as necessary
     while count_difference > 0 {
-        //add
         spawn_object(
             &mut commands,
             &mut meshes,
             &mut materials,
             Movable::new(&ObjectType::BlackHole)
                 .set_position(position_rand.sample(), position_rand.sample())
-                .set_velocity(1200.0, 1000.0)
+                .set_velocity(bh_vel_rand.sample(), bh_vel_rand.sample())
                 .set_mass(bh_mass_rand.sample())
                 .build(),
         );
         count_difference -= 1;
     }
+    //remove objects, if necessary
     if count_difference < 0 {
-        //remove
-
         for (entity, movable, _transform) in &objects {
             if movable.otype == ObjectType::BlackHole {
                 destroy_object(&mut commands, entity);
@@ -474,20 +520,6 @@ fn update_slider_results(
                 }
             }
         }
-
-        /* let mut v: Vec<(Entity, &Movable, &Transform)> = objects.into_iter().collect();
-
-        while count_difference < 0 {
-            match v.pop() {
-                Option::Some((entity, movable, _mesh)) => {
-                    if movable.otype == ObjectType::BlackHole {
-                        destroy_object(&mut commands, entity);
-                        count_difference += 1;
-                    }
-                }
-                _ => {}
-            }
-        }*/
     }
 }
 
@@ -670,28 +702,27 @@ fn check_for_gameover(
     mut world_count_label: Query<&mut Text, (With<WorldCounter>, Without<BHCounter>)>,
     mut state: ResMut<GameState>,
 ) {
-    let item_count = objects.count();
     let mut bh_count: usize = 0;
     let mut planet_count: usize = 0;
 
-    if state.game_started {
-        for (_, movable) in objects {
-            match movable.otype {
-                ObjectType::BlackHole => bh_count += 1,
-                ObjectType::World => planet_count += 1,
-                _ => {}
-            }
+    for (_, movable) in objects {
+        match movable.otype {
+            ObjectType::BlackHole => bh_count += 1,
+            ObjectType::World => planet_count += 1,
+            _ => {}
         }
+    }
 
+    if state.game_started {
         if planet_count == 0 {
             state.world_alive = false;
         }
         if bh_count == 1 {
             state.game_alive = false;
         }
-
-        //&Text -> Text -> String
-        **bh_count_label.single_mut().unwrap() = format!("{}", bh_count);
-        **world_count_label.single_mut().unwrap() = format!("{}", planet_count);
     }
+
+    //&Text -> Text -> String
+    **bh_count_label.single_mut().unwrap() = format!("{}", bh_count);
+    **world_count_label.single_mut().unwrap() = format!("{}", planet_count);
 }
