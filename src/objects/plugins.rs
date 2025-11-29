@@ -5,8 +5,8 @@ use crate::objects::movables::{
     CollisionFrame, CollisionResult, CollisionSet, Movable, ObjectType, Velocity,
 };
 use crate::objects::sliders::{
-    BLACKHOLE_COUNT_RNG, BLACKHOLE_MASS_RNG, SLIDERWIDTH, SliderBkg, SliderGraphic, SliderType,
-    SliderValue, generate_slider,
+    BLACKHOLE_COUNT_RNG, BLACKHOLE_MASS_RNG, BLACKHOLE_VEL_RNG, SLIDERWIDTH, SliderBkg,
+    SliderGraphic, SliderType, SliderValue, generate_slider,
 };
 use crate::objects::traits::collisions::{CollisionDetection, Position, Shapes};
 use bevy::camera::ScalingMode;
@@ -107,11 +107,8 @@ fn setup_objects(
 ) {
     let mut bh_count = 0;
     let mut bh_mass = 0.0;
-    let mut position_rand = Gauss::new(
-        0.0,
-        UNIVERSE_SIZE / 4.0,
-        GaussBoundary::WrapBoth((-UNIVERSE_SIZE / 2.0, UNIVERSE_SIZE / 2.0)),
-    );
+    let mut bh_vel = 0.0;
+    let mut bh_pos_std = 0.0; //std for the position gauss
 
     let bh_mass_mean = (BLACKHOLE_MASS_RNG.upper + BLACKHOLE_MASS_RNG.lower) / 2.0;
 
@@ -128,14 +125,36 @@ fn setup_objects(
                 bh_mass = slider_value.value * bh_mass_mean;
                 println!("ave mass = {}", bh_mass);
             }
+            SliderType::BHVelocitySlider => {
+                bh_vel =
+                    slider_value.value * (BLACKHOLE_VEL_RNG.upper + BLACKHOLE_VEL_RNG.lower) / 2.0;
+                println!("ave vel = {}", bh_vel);
+            }
+            SliderType::BHDensitySlider => {
+                //use 1-slider value so that max on the bar squeezes the universe the most
+                bh_pos_std = (1.0 - slider_value.value) * UNIVERSE_SIZE / 4.0; //universesize/4 is max - basically fills the universe
+                println!("pos std = {}", bh_pos_std);
+            }
             _ => {}
         }
     }
+
+    let mut position_rand = Gauss::new(
+        0.0,
+        bh_pos_std,
+        GaussBoundary::WrapBoth((-UNIVERSE_SIZE / 2.0, UNIVERSE_SIZE / 2.0)),
+    );
 
     let mut bh_mass_rand = Gauss::new(
         bh_mass,
         BLACKHOLE_MASS_RNG.upper / 4.0,
         GaussBoundary::ClampBoth((BLACKHOLE_MASS_RNG.lower, BLACKHOLE_MASS_RNG.upper)),
+    );
+
+    let mut bh_vel_rand = Gauss::new(
+        bh_vel,
+        BLACKHOLE_VEL_RNG.upper / 4.0,
+        GaussBoundary::ClampBoth((BLACKHOLE_VEL_RNG.lower, BLACKHOLE_VEL_RNG.upper)),
     );
 
     for _ in 0..bh_count {
@@ -145,83 +164,11 @@ fn setup_objects(
             &mut materials,
             Movable::new(&ObjectType::BlackHole)
                 .set_position(position_rand.sample(), position_rand.sample())
-                .set_velocity(1200.0, 1000.0)
+                .set_velocity(bh_vel_rand.sample(), bh_vel_rand.sample())
                 .set_mass(bh_mass_rand.sample())
                 .build(),
         );
     }
-
-    //for i in 0..black_holes.0 {
-    /*spawn_object(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
-        Movable::new(&ObjectType::BlackHole)
-            .set_position(2500.0, -2500.0)
-            .set_velocity(1200.0, 1000.0)
-            .set_mass(20.0)
-            .build(),
-    );*/
-
-    /*
-        commands.spawn((
-            Mesh2d(meshes.add(Circle::new(50.0))),
-            MeshMaterial2d(materials.add(hole_color)),
-            Transform::from_xyz(0.0, -5000.0, 0.0),
-            Movable::new(blackhole_count, &ObjectType::BlackHole)
-                .set_position(0.0, -5000.0)
-                .set_velocity(0.0, 1000.0)
-                .set_mass(20.0)
-                .build(),
-        ));
-    */
-
-    /*spawn_object(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
-        Movable::new(&ObjectType::BlackHole)
-            .set_position(-2500.0, 2500.0)
-            .set_velocity(-1200.0, -1000.0)
-            .set_mass(21.0)
-            .build(),
-    );*/
-
-    /*spawn_object(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
-        Movable::new(&ObjectType::BlackHole)
-            .set_position(0.0, 0.0)
-            .set_velocity(0.0, 0.0)
-            .set_mass(100.0)
-            .build(),
-    );*/
-
-    /*commands.spawn((
-        Mesh2d(meshes.add(Circle::new(25.0))),
-        MeshMaterial2d(materials.add(hole_color)),
-        Transform::from_xyz(0.0, 5000.0, 0.0),
-        Movable::new(blackhole_count, &ObjectType::BlackHole)
-            .set_position(0.0, 5000.0)
-            .set_velocity(0.0, -1000.0)
-            .set_mass(10.0)
-            .build(),
-    ));*/
-
-    /*commands.spawn((
-        Mesh2d(meshes.add(Circle::new(50.0))),
-        MeshMaterial2d(materials.add(hole_color)),
-        Transform::from_xyz(-5000.0, 0.0, 0.0),
-    ));
-
-    commands.spawn((
-        Mesh2d(meshes.add(Circle::new(25.0))),
-        MeshMaterial2d(materials.add(hole_color)),
-        Transform::from_xyz(5000.0, 0.0, 0.0),
-    ));
-    */
-    //}
 }
 
 fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWindow>>) {
@@ -368,62 +315,6 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
             TextColor(Color::linear_rgba(0.9, 0.9, 0.9, 0.5)),
         ))
         .id();
-    /*
-    let bh_count_text = commands
-        .spawn((
-            Text::new("Count"),
-            TextFont {
-                font_size: 16.0,
-                ..default()
-            },
-            TextColor(Color::WHITE),
-            TextLayout::new_with_justify(Justify::Center),
-        ))
-        .id();
-
-    let bh_count_slider = commands
-        .spawn((
-            Node {
-                //position_type: PositionType::Absolute,
-                height: px(50.0),
-                width: px(SLIDERWIDTH),
-                align_items: AlignItems::Center,
-                justify_items: JustifyItems::Center,
-                align_content: AlignContent::Center,
-                justify_content: JustifyContent::Center,
-                ..default()
-            },
-            BorderColor::all(Color::WHITE),
-            Outline::new(px(1), Val::ZERO, Color::WHITE),
-            Interaction::None,
-            RelativeCursorPosition::default(),
-            SliderValue::default(),
-            SliderType::BHCountSlider,
-        ))
-        .id();
-
-    let bh_count_bkg = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                top: px(0),
-                left: px(0),
-                height: px(50.0),
-                width: px(SLIDERWIDTH / 2.0),
-                ..default()
-            },
-            BackgroundColor(Color::linear_rgba(0.0, 0.4, 0.0, 1.0)),
-            SliderBkg,
-        ))
-        .id();
-
-
-
-    commands.entity(left_container).add_child(left_header);
-    commands.entity(bh_count_slider).add_child(bh_count_bkg);
-    commands.entity(bh_count_slider).add_child(bh_count_text);
-    commands.entity(left_container).add_child(bh_count_slider);
-    */
 
     commands.entity(left_container).add_child(left_header);
 

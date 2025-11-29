@@ -1,4 +1,4 @@
-use bevy::{prelude::*, ui::RelativeCursorPosition};
+use bevy::prelude::*;
 
 pub const SLIDERWIDTH: f32 = 100.0;
 
@@ -16,6 +16,11 @@ pub const BLACKHOLE_COUNT_RNG: Range<u32> = Range {
 pub const BLACKHOLE_MASS_RNG: Range<f32> = Range {
     lower: 1.0,
     upper: 100.0,
+};
+
+pub const BLACKHOLE_VEL_RNG: Range<f32> = Range {
+    lower: 1.0,
+    upper: 10_000.0,
 };
 
 #[derive(Component, Debug)]
