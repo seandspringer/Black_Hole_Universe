@@ -1,5 +1,5 @@
 use crate::objects::clocks::{BHCounter, TotalTime, WorldCounter, WorldTime};
-use crate::objects::gamestate::{GameState, ThePlanet};
+use crate::objects::gamestate::{GameState, ThePlanet, UNIVERSE_SIZE};
 use crate::objects::gauss::{Gauss, GaussBoundary};
 use crate::objects::movables::{
     CollisionFrame, CollisionResult, CollisionSet, Movable, ObjectType, Velocity,
@@ -20,8 +20,6 @@ use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-
-const UNIVERSE_SIZE: f32 = 25_000.0f32;
 
 pub struct BlackHoleUniverse;
 
@@ -601,7 +599,7 @@ fn update_velocity(
     if state.game_started && state.game_alive {
         let vec: Vec<&Movable> = objects.iter().collect();
         let mut velocities: Vec<Velocity> = Vec::new();
-        // first update positions
+
         for movable in &objects {
             velocities.push(movable.update_velocity(&vec, time.delta_secs()));
         }

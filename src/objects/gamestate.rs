@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+pub const UNIVERSE_SIZE: f32 = 25_000.0f32;
 #[derive(Component)]
 pub struct ThePlanet;
 

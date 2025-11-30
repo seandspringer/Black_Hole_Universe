@@ -1,3 +1,4 @@
+use crate::objects::gamestate::UNIVERSE_SIZE;
 use crate::objects::traits::collisions::{CollisionDetection, LineSegment, Position, Shapes};
 use bevy::math::FloatPow;
 use bevy::prelude::*;
@@ -367,9 +368,36 @@ impl Movable {
     }
 
     pub fn calculate_acceleration(&self, other: &Self) -> Acceleration {
-        let dx = other.position.x - self.position.x;
-        let dy = other.position.y - self.position.y;
+        let dx_straight = other.position.x - self.position.x;
+        let wrap_dx = UNIVERSE_SIZE - dx_straight.abs();
+
+        let dy_straight = other.position.y - self.position.y;
+        let wrap_dy = UNIVERSE_SIZE - dy_straight.abs();
+
+        let mut dx = dx_straight;
+        let mut dy = dy_straight;
+
+        if wrap_dx < dx_straight.abs() {
+            //want to invert sign
+            if dx_straight.is_sign_negative() { 
+                dx = wrap_dx;
+            }
+            else {
+                dx = -wrap_dx;
+            }
+        }
+        if wrap_dy < dy_straight.abs() {
+            //want to invert sign
+            if dy_straight.is_sign_negative() { 
+                dy = wrap_dy;
+            }
+            else {
+                dy = -wrap_dy;
+            }
+        }
+
         let r = dx.squared() + dy.squared();
+
         let a =
             (Movable::G * other.size.mass / (r + Movable::EPSILON)).min(Movable::MAXACCELERATION);
         let theta = dy.atan2(dx);
