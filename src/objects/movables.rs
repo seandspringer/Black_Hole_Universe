@@ -75,7 +75,6 @@ impl<'a> CollisionFrame<'a> {
         for item in &mut self.array {
             match CollisionSet::merge_intersection(item, &new) {
                 Some(n) => {
-                    //println!("{:?}", n);
                     *item = n;
                     found = true;
                     break;
@@ -238,13 +237,13 @@ type PlanetCollisionResult = (Movable, Movable, Movable, Movable);
 
 impl Movable {
     const MINIMUM_RADIUS: f32 = 1.0f32;
-    const G: f32 = 1000_000_000.0;
+    const G: f32 = 100_000_000.0;
     const EPSILON: f32 = 1000.0; //to pad on radius to prevent divide by zero possibilities
     const MAXACCELERATION: f32 = 1.0E4;
     const MAXVELOCITY: f32 = 10_000.0; //that would mean travel the length of the universe in 1 second
 
     pub fn new(otype: &ObjectType) -> Self {
-        let id = match (otype) {
+        let id = match otype {
             ObjectType::BlackHole => BLACKHOLECOUNT.fetch_add(1, SeqCst),
             ObjectType::World => WORLDCOUNT.fetch_add(1, SeqCst),
             _ => 0,
@@ -302,9 +301,9 @@ impl Movable {
             } //https://blackholes.stardate.org/resources/article-structure-of-a-black-hole.html
             ObjectType::World => {
                 //https://www.aanda.org/articles/aa/full_html/2024/06/aa48690-23/aa48690-23.html#F1, Eq5
-                if mass < 5.0 {
+                if mass <= 5.0 {
                     self.size.radius = (1.02f32 * mass.powf(0.27)).max(Movable::MINIMUM_RADIUS);
-                } else if mass < 127.0 {
+                } else if mass <= 127.0 {
                     self.size.radius = (18.6f32 * mass.powf(-0.06)).max(Movable::MINIMUM_RADIUS);
                 } else {
                     self.size.radius = (0.56 * mass.powf(0.67)).max(Movable::MINIMUM_RADIUS);
@@ -312,7 +311,7 @@ impl Movable {
             }
             _ => {}
         }
-        //println!("r={}", self.size.radius);
+
         self
     }
 
@@ -374,16 +373,6 @@ impl Movable {
         let a =
             (Movable::G * other.size.mass / (r + Movable::EPSILON)).min(Movable::MAXACCELERATION);
         let theta = dy.atan2(dx);
-        /*println!(
-            "{} {r} {a} {theta} {} {} {} {} {} {}",
-            self.id.0,
-            a * theta.cos(),
-            a * theta.sin(),
-            self.position.x,
-            self.position.y,
-            dy,
-            dx
-        );*/
 
         Acceleration {
             ax: a * theta.cos(),

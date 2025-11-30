@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 
 pub const SLIDERWIDTH: f32 = 100.0; //pixels
-pub const POSSTDEVMIN: f32 = 0.05; //tightest grouping allowed
+pub const POSSTDEVMIN: f32 = 0.1; //position stdev min: tightest grouping allowed
+pub const VELSTDEVMIN: f32 = 0.01; //velocity stdev min
 
 #[derive(Component)]
 pub struct Range<T> {
@@ -10,18 +11,18 @@ pub struct Range<T> {
 }
 
 pub const BLACKHOLE_COUNT_RNG: Range<u32> = Range {
-    lower: 3,
-    upper: 1000,
+    lower: 2,
+    upper: 100,
 };
 
 pub const BLACKHOLE_MASS_RNG: Range<f32> = Range {
-    lower: 1.0,
-    upper: 100.0,
+    lower: 2.0,
+    upper: 20.0,
 };
 
 pub const BLACKHOLE_VEL_RNG: Range<f32> = Range {
-    lower: 1.0,
-    upper: 10_000.0,
+    lower: -1_000.0,
+    upper: 1_000.0,
 };
 
 #[derive(Component, Debug)]

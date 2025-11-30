@@ -1,12 +1,12 @@
 use crate::objects::clocks::{BHCounter, TotalTime, WorldCounter, WorldTime};
-use crate::objects::gamestate::GameState;
+use crate::objects::gamestate::{GameState, ThePlanet};
 use crate::objects::gauss::{Gauss, GaussBoundary};
 use crate::objects::movables::{
     CollisionFrame, CollisionResult, CollisionSet, Movable, ObjectType, Velocity,
 };
 use crate::objects::sliders::{
     BLACKHOLE_COUNT_RNG, BLACKHOLE_MASS_RNG, BLACKHOLE_VEL_RNG, POSSTDEVMIN, SLIDERWIDTH,
-    SliderBkg, SliderGraphic, SliderType, SliderValue, generate_slider,
+    SliderBkg, SliderGraphic, SliderType, SliderValue, VELSTDEVMIN, generate_slider,
 };
 use crate::objects::traits::collisions::{CollisionDetection, Position, Shapes};
 use bevy::camera::ScalingMode;
@@ -21,12 +21,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-const UNIVERSE_SIZE: f32 = 50_000.0f32;
+const UNIVERSE_SIZE: f32 = 25_000.0f32;
 
 pub struct BlackHoleUniverse;
 
 impl Plugin for BlackHoleUniverse {
     fn build(&self, app: &mut App) {
+        app.add_plugins(MeshPickingPlugin);
         app.insert_resource(GameState::new());
         app.add_systems(Startup, (setup_field, setup_hub, setup_objects).chain());
         app.add_systems(
@@ -55,14 +56,26 @@ fn spawn_object(
     materials: &mut ResMut<Assets<ColorMaterial>>,
     object: Movable,
 ) {
-    let color = Color::linear_rgb(0.9, 0.9, 0.9);
+    let mut color = Color::linear_rgb(0.9, 0.9, 0.9);
 
-    commands.spawn((
-        Mesh2d(meshes.add(Circle::new(object.size.radius))),
-        MeshMaterial2d(materials.add(color)),
-        Transform::from_xyz(object.position.x, object.position.y, 0.0),
-        object,
-    ));
+    if object.otype == ObjectType::World {
+        color = Color::linear_rgb(0.0, 0.9, 0.0);
+
+        commands.spawn((
+            Mesh2d(meshes.add(Circle::new(object.size.radius))),
+            MeshMaterial2d(materials.add(color)),
+            Transform::from_xyz(object.position.x, object.position.y, 0.0),
+            ThePlanet,
+            object,
+        ));
+    } else {
+        commands.spawn((
+            Mesh2d(meshes.add(Circle::new(object.size.radius))),
+            MeshMaterial2d(materials.add(color)),
+            Transform::from_xyz(object.position.x, object.position.y, 0.0),
+            object,
+        ));
+    }
 }
 
 fn destroy_object(commands: &mut Commands, entity: Entity) {
@@ -85,11 +98,15 @@ fn setup_field(
     ));
 
     //spawn the space-time
-    commands.spawn((
-        Mesh2d(meshes.add(Rectangle::new(UNIVERSE_SIZE - 10.0, UNIVERSE_SIZE - 10.0))),
-        MeshMaterial2d(materials.add(Color::linear_rgb(0.0, 0.0, 0.0))),
-        Transform::from_translation(Vec3::new(0.0, 0.0, -1.0)),
-    ));
+    commands
+        .spawn((
+            Mesh2d(meshes.add(Rectangle::new(UNIVERSE_SIZE - 10.0, UNIVERSE_SIZE - 10.0))),
+            MeshMaterial2d(materials.add(Color::linear_rgb(0.0, 0.0, 0.0))),
+            Transform::from_translation(Vec3::new(0.0, 0.0, -1.0)),
+        ))
+        .observe(place_planet)
+        .observe(planet_dragged)
+        .observe(check_for_start);
 
     //border
     commands.spawn((
@@ -118,22 +135,18 @@ fn setup_objects(
                 bh_count = (slider_value.value * BLACKHOLE_COUNT_RNG.upper as f32)
                     .max(BLACKHOLE_COUNT_RNG.lower as f32)
                     .round() as u32;
-
-                println!("count = {}", bh_count);
             }
             SliderType::BHMassSlider => {
                 bh_mass = slider_value.value * bh_mass_mean;
-                println!("ave mass = {}", bh_mass);
             }
             SliderType::BHVelocitySlider => {
-                bh_vel =
-                    slider_value.value * (BLACKHOLE_VEL_RNG.upper + BLACKHOLE_VEL_RNG.lower) / 2.0;
-                println!("ave vel = {}", bh_vel);
+                bh_vel = (slider_value.value + VELSTDEVMIN)
+                    * (BLACKHOLE_VEL_RNG.upper.abs() + BLACKHOLE_VEL_RNG.lower.abs())
+                    / 2.0;
             }
             SliderType::BHDensitySlider => {
                 //use 1-slider value so that max on the bar squeezes the universe the most
-                bh_pos_std = (1.0 - slider_value.value + POSSTDEVMIN) * UNIVERSE_SIZE / 4.0; //universesize/4 is max - basically fills the universe
-                println!("pos std = {}", bh_pos_std);
+                bh_pos_std = (1.0 - slider_value.value + POSSTDEVMIN) * UNIVERSE_SIZE / 2.0; //universesize/2 is max - basically fills the universe
             }
         }
     }
@@ -151,8 +164,8 @@ fn setup_objects(
     );
 
     let mut bh_vel_rand = Gauss::new(
+        0.0,
         bh_vel,
-        BLACKHOLE_VEL_RNG.upper / 4.0,
         GaussBoundary::ClampBoth((BLACKHOLE_VEL_RNG.lower, BLACKHOLE_VEL_RNG.upper)),
     );
 
@@ -423,15 +436,16 @@ fn update_slider_results(
                 }
             }
             SliderType::BHVelocitySlider => {
-                bh_vel =
-                    slider_value.value * (BLACKHOLE_VEL_RNG.upper + BLACKHOLE_VEL_RNG.lower) / 2.0;
+                bh_vel = (slider_value.value + VELSTDEVMIN)
+                    * (BLACKHOLE_VEL_RNG.upper.abs() + BLACKHOLE_VEL_RNG.lower.abs())
+                    / 2.0;
                 if slider_value.value != slider_value.prev_value {
                     update_bh_vel = true;
                 }
             }
             SliderType::BHDensitySlider => {
                 //use 1-slider value so that max on the bar squeezes the universe the most
-                bh_pos_std = (1.0 - slider_value.value + POSSTDEVMIN) * UNIVERSE_SIZE / 4.0; //universesize/4 is max - basically fills the universe
+                bh_pos_std = (1.0 - slider_value.value + POSSTDEVMIN) * UNIVERSE_SIZE / 2.0; //universesize/4 is max - basically fills the universe
                 if slider_value.value != slider_value.prev_value {
                     update_bh_pos = true;
                 }
@@ -452,8 +466,8 @@ fn update_slider_results(
     );
 
     let mut bh_vel_rand = Gauss::new(
+        0.0,
         bh_vel,
-        BLACKHOLE_VEL_RNG.upper / 4.0,
         GaussBoundary::ClampBoth((BLACKHOLE_VEL_RNG.lower, BLACKHOLE_VEL_RNG.upper)),
     );
 
@@ -694,6 +708,68 @@ fn update_collisions(
             _ => {}
         }
     }
+}
+
+fn place_planet(
+    trigger: On<Pointer<Press>>,
+    mut state: ResMut<GameState>,
+    camera_query: Single<(&Camera, &GlobalTransform)>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    planet_query: Query<Entity, With<ThePlanet>>,
+) {
+    if state.game_started {
+        return;
+    }
+
+    let position = trigger.pointer_location.position; //Vec2 in screen coordianates (int, top left is 0,0)
+
+    let (camera, camera_transform) = *camera_query;
+    if let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, position) {
+        for entity in planet_query {
+            //prevent any bugs with the click capture
+            destroy_object(&mut commands, entity);
+        }
+
+        spawn_object(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            Movable::new(&ObjectType::World)
+                .set_position(world_pos.x, world_pos.y)
+                .set_velocity(0.0, 0.0)
+                .set_size(0.0, 50.0)
+                .build(),
+        );
+        state.planet_placed = true;
+    }
+}
+
+fn planet_dragged(
+    drag: On<Pointer<Drag>>,
+    state: Res<GameState>,
+    mut planet_query: Query<&mut Movable, With<ThePlanet>>,
+) {
+    if state.game_started {
+        return;
+    } else if planet_query.iter().len() == 0 {
+        return;
+    }
+
+    let mut planet = planet_query.single_mut().unwrap();
+    planet.velocity.vx += drag.delta.x * 10.0;
+    planet.velocity.vy += -drag.delta.y * 10.0;
+}
+
+fn check_for_start(_trigger: On<Pointer<Release>>, mut state: ResMut<GameState>) {
+    if state.game_started {
+        return;
+    } else if !state.planet_placed {
+        return;
+    }
+
+    state.game_started = true;
 }
 
 fn check_for_gameover(

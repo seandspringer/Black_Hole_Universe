@@ -1,10 +1,14 @@
 use bevy::prelude::*;
 
+#[derive(Component)]
+pub struct ThePlanet;
+
 #[derive(Resource)]
 pub struct GameState {
     pub world_alive: bool,
     pub game_alive: bool,
     pub game_started: bool,
+    pub planet_placed: bool,
 }
 
 impl GameState {
@@ -13,6 +17,7 @@ impl GameState {
             world_alive: true,
             game_alive: true,
             game_started: false,
+            planet_placed: false,
         }
     }
 }
