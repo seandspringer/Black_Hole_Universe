@@ -38,12 +38,7 @@ impl Position {
         if a == 0.0 && b == 0.0 {
             None
         } else {
-            Some(LineSegment {
-                pos: self,
-                a,
-                b,
-                c,
-            })
+            Some(LineSegment { pos: self, a, b, c })
         }
     }
 }
@@ -69,8 +64,7 @@ impl<'a> LineSegment<'a> {
             && self.pos.y.max(self.pos.y_prev) >= y_on_line;
 
         if within_x & within_y {
-            (self.a * x + self.b * y + self.c).abs()
-                / (self.a * self.a + self.b * self.b).sqrt() //distance
+            (self.a * x + self.b * y + self.c).abs() / (self.a * self.a + self.b * self.b).sqrt() //distance
         } else {
             //must be one endpoint is closest to this point
             let d1 = (self.pos.x - x).squared() + (self.pos.y - y).squared();
@@ -83,7 +77,7 @@ impl<'a> LineSegment<'a> {
 pub trait CollisionDetection {
     fn get_position(&self) -> Position;
     fn get_hitbox(&self) -> Shapes;
-    
+
     //https://www.topcoder.com/thrive/articles/Geometry%20Concepts%20part%202:%20%20Line%20Intersection%20and%20its%20Applications
     fn minimum_distance(&self, two: &Position) -> Option<f32> {
         let one = self.get_position();
@@ -95,11 +89,14 @@ pub trait CollisionDetection {
             let int_x = (l2.b * l1.c - l1.b * l2.c) / det;
             let int_y = (l1.a * l2.c - l2.a * l1.c) / det; //these are intesections of the infinite lines
 
-            if one.x.min(one.x_prev) >= int_x && one.x.max(one.x_prev) <= int_x 
-                && one.y.min(one.y_prev) >= int_y && one.y.max(one.y_prev) <= int_y {
-                    //then intersect
-                    return Some(0.0f32);
-                }
+            if one.x.min(one.x_prev) >= int_x
+                && one.x.max(one.x_prev) <= int_x
+                && one.y.min(one.y_prev) >= int_y
+                && one.y.max(one.y_prev) <= int_y
+            {
+                //then intersect
+                return Some(0.0f32);
+            }
         }
 
         //lines are parallel and so a1=a2 and b1=b2
@@ -121,14 +118,12 @@ pub trait CollisionDetection {
         if min_r.is_none() {
             return false;
         }
-        
+
         let min_r = min_r.unwrap();
 
         match my_hitbox {
             Shapes::Circle(r1) => match other_hitbox {
-                Shapes::Circle(r2) => {
-                    min_r <= r1 + r2
-                }
+                Shapes::Circle(r2) => min_r <= r1 + r2,
             },
         }
     }
