@@ -16,8 +16,14 @@ use bevy::window::PrimaryWindow;
 use std::collections::BTreeSet;
 use std::sync::Mutex;
 
+/// Bevy plugin definition
 pub struct BlackHoleUniverse;
 
+/// Implementation for the Bevy plugin: addes necessary
+/// resources (similiar to globals),
+/// required plugins (similiar to modules)
+/// and registers systems (functions) to run
+/// at every frame update. This is the heart of the program
 impl Plugin for BlackHoleUniverse {
     fn build(&self, app: &mut App) {
         app.add_plugins(MeshPickingPlugin);
@@ -42,7 +48,9 @@ impl Plugin for BlackHoleUniverse {
 }
 
 /// not called directly from a system/event loop but is instead a helper function
-/// called by either setup_objects or slider motion, etc
+/// called by either setup_objects or slider motion, etc to physically produce
+/// a visual object on the playing field. All objects are Mesh2d circles where
+/// only the color changes to distinguish between the objects
 fn spawn_object(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
@@ -71,10 +79,19 @@ fn spawn_object(
     }
 }
 
+/// A helper function like above, except removes an Entity (this is a
+/// Bevy object / collection of components) from the game. Used to
+/// destroy a visible object
 fn destroy_object(commands: &mut Commands, entity: Entity) {
     commands.entity(entity).despawn();
 }
 
+/// Schedule: Startup Bevy System
+///
+/// spawns the camera (2d) with its Orthographic Projection,
+/// the space-time playing field
+/// and a small red border to highlight the universe boundary against
+/// the window background
 fn setup_field(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -109,6 +126,11 @@ fn setup_field(
     ));
 }
 
+/// Schedule: Startup Bevy System
+///
+/// sets the initial state of the Universe (playing field)
+/// all slider-bars default to 50% full and so the initial
+/// configuration will represent this 50% option.
 fn setup_objects(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -176,6 +198,11 @@ fn setup_objects(
     }
 }
 
+/// Schedule: Startup Bevy System
+///
+/// Bevy system which spawns the HUB: the
+/// slider bar option controls, any visible text,
+/// the progress timer counters, etc.
 fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWindow>>) {
     //spawn top left text: Total time and black hole counter
     commands
@@ -184,8 +211,6 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
             top: px(5),
             left: px(5),
 
-            //width: Val::Percent(10.0),
-            //height: Val::Percent(10.0),
             display: Display::Grid, // Use Grid display
 
             grid_template_columns: vec![GridTrack::flex(1.0), GridTrack::flex(1.0)], // Two equal columns
@@ -202,7 +227,6 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
                 TextColor(Color::linear_rgba(0.5, 0.5, 0.0, 0.5)),
             ));
             parent.spawn((
-                //TextSpan::default(),
                 Text::new("0.00"),
                 TextFont {
                     font_size: 18.0,
@@ -220,7 +244,6 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
                 TextColor(Color::linear_rgba(0.5, 0.5, 0.0, 0.5)),
             ));
             parent.spawn((
-                //TextSpan::default(),
                 Text::new("0"),
                 TextFont {
                     font_size: 16.0,
@@ -238,8 +261,6 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
             top: px(5),
             right: px(-85), //Val::Percent(-5.0),
 
-            //width: Val::Percent(20.0),
-            //height: Val::Percent(10.0),
             display: Display::Grid, // Use Grid display
 
             grid_template_columns: vec![GridTrack::flex(1.0), GridTrack::flex(1.0)], // Two equal columns
@@ -290,24 +311,20 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
 
     // spawn the Black Hole Settings group container and the title bar
     let left_container = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                flex_direction: FlexDirection::Column, // Stack children vertically
-                row_gap: Val::Px(15.0),
-                top: px(50),
-                left: px(20),
-                height: px(height_in_pixels - 200),
-                width: px(SLIDERWIDTH * 2.0),
-                align_items: AlignItems::Center,
-                justify_items: JustifyItems::Center,
-                align_content: AlignContent::Center,
-                justify_content: JustifyContent::Center,
-                ..default()
-            },
-            //BorderColor::all(Color::WHITE),
-            //Outline::new(px(1), Val::ZERO, Color::WHITE),
-        ))
+        .spawn((Node {
+            position_type: PositionType::Absolute,
+            flex_direction: FlexDirection::Column, // Stack children vertically
+            row_gap: Val::Px(15.0),
+            top: px(50),
+            left: px(20),
+            height: px(height_in_pixels - 200),
+            width: px(SLIDERWIDTH * 2.0),
+            align_items: AlignItems::Center,
+            justify_items: JustifyItems::Center,
+            align_content: AlignContent::Center,
+            justify_content: JustifyContent::Center,
+            ..default()
+        },))
         .id();
 
     let left_header = commands
@@ -388,6 +405,12 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
     commands.entity(left_container).add_child(mass_base);
 }
 
+/// Schedule: Update Bevy System
+///
+/// this system applies the changes made by the user
+/// on any of the slider-bars to the real-time display.
+/// Note: changes are only accepted prior to the start of the
+/// game. Changes after the start immediately return from this system.
 fn update_slider_results(
     state: Res<GameState>,
     mut commands: Commands,
@@ -396,6 +419,7 @@ fn update_slider_results(
     mut objects: Query<(Entity, &mut Movable, &mut Transform), With<Movable>>,
     sliders: Query<(&SliderValue, &SliderType)>,
 ) {
+    //only accept slider-changes prior to game start
     if state.game_started {
         return;
     }
@@ -410,7 +434,7 @@ fn update_slider_results(
 
     let bh_mass_mean = (BLACKHOLE_MASS_RNG.upper + BLACKHOLE_MASS_RNG.lower) / 2.0;
 
-    //check black hole number for changes
+    //check all slider bars for changes and gather those changes, if neccessary
     for (slider_value, slider_type) in sliders {
         match slider_type {
             SliderType::Count => {
@@ -446,6 +470,7 @@ fn update_slider_results(
         }
     }
 
+    // build our random-normal number generators using the slider-bar metrics from above:
     let mut position_rand = Gauss::new(
         0.0,
         bh_pos_std,
@@ -464,6 +489,7 @@ fn update_slider_results(
         GaussBoundary::ClampBoth((BLACKHOLE_VEL_RNG.lower, BLACKHOLE_VEL_RNG.upper)),
     );
 
+    // if the blackhole masses slider has changed, implement those changes to objects already rendered:
     if update_bh_masses {
         for (_entity, mut movable, mut transform) in &mut objects {
             if movable.otype == ObjectType::BlackHole {
@@ -477,6 +503,7 @@ fn update_slider_results(
         }
     }
 
+    // if the blackhole velocity slider changed, implement those changes to the objects already rendered:
     if update_bh_vel {
         for (_entity, mut movable, mut _transform) in &mut objects {
             if movable.otype == ObjectType::BlackHole {
@@ -485,6 +512,7 @@ fn update_slider_results(
         }
     }
 
+    // if the blackhole density slider changed, implement those changes to the objects already rendered:
     if update_bh_pos {
         for (_entity, mut movable, mut transform) in &mut objects {
             if movable.otype == ObjectType::BlackHole {
@@ -516,6 +544,7 @@ fn update_slider_results(
         );
         count_difference -= 1;
     }
+
     //remove objects, if necessary
     if count_difference < 0 {
         for (entity, movable, _transform) in &objects {
@@ -530,6 +559,18 @@ fn update_slider_results(
     }
 }
 
+/// Schedule: Update Bevy System
+///
+/// checks if
+///
+/// 1. the mouse btn is pressed
+/// 2. the mouse position is inside one of the slider-bars
+/// 3. if 1 && 2, store the value inside the SliderValue struct
+///    as a percentage of the bar [0-1]
+///
+/// this stored value will then be used in:
+/// 1. fn update_slider to graphically show the slider bar change
+/// 2. fn update_slider_results to apply these changes to the playing field
 fn drag_slider(
     mut interaction_query: Query<(&Interaction, &RelativeCursorPosition, &mut SliderValue)>,
 ) {
@@ -550,7 +591,10 @@ fn drag_slider(
     }
 }
 
+/// Schedule: Update Bevy System
+///
 /// physically updates the background of the slider to give the movement response
+/// by changing the width of the node containing the green-colored background
 fn update_slider(
     parent_query: Query<(&Children, &SliderValue)>,
     mut child_query: Query<&mut Node, With<SliderBkg>>,
@@ -563,6 +607,17 @@ fn update_slider(
     }
 }
 
+/// Schedule: Update Bevy System
+///
+/// updates the text in the top-left (black hole) and top-right (planet)
+/// timer boxes used to indicate the lifetime of the universe and of our
+/// dear planet.
+///
+/// Note the odd format here:
+/// - the query returns a Query<&mut Text> iterator
+/// - the first deref returns the first &mut Text in that query return
+/// - the second deref returns the internal &String struct underlying the Text
+///   which we then alter via the format!(...) macro
 fn update_clock(
     time: Res<Time>,
     mut total_time: Query<&mut Text, (With<TotalTime>, Without<WorldTime>)>,
@@ -586,6 +641,12 @@ fn update_clock(
     }
 }
 
+/// Schedule: Update Bevy System
+///
+/// Updates the velocity of all objects on the playing field.
+/// A vec of Velocity structs is built by calculting the new frame's
+/// velocity using the time between frame renderings and then each
+/// object's velocity is updated
 fn update_velocity(
     time: Res<Time>,
     mut objects: Query<&mut Movable, With<Movable>>,
@@ -605,13 +666,18 @@ fn update_velocity(
     }
 }
 
+/// Schedule: Update Bevy System
+///
+/// Physically moves the objects on the playing field.
+/// uses the updated velocities as set by the above System and then
+/// moves the objects based upon the frame rate. Note the wrap around
+/// logic to enfource the Spherical Universe concept
 fn update_motion(
     time: Res<Time>,
     mut objects: Query<(&mut Movable, &mut Transform), With<Movable>>,
     state: Res<GameState>,
 ) {
     if state.game_started && state.game_alive {
-        // first update positions
         const BOUNDARY: f32 = 0.5 * UNIVERSE_SIZE;
         let elapsed = time.delta_secs();
 
@@ -640,6 +706,22 @@ fn update_motion(
     }
 }
 
+/// Schedule: Update Bevy System
+///
+/// The workhorse of each frame:
+/// iterates through each object and determines if the current object has
+/// collided with another object.
+///
+/// Because this calculation in O(N^2) but is still embaressingly parallel,
+/// the rayon iterator parallelization logic is used to calculate and collect
+/// a CollisionTree in parallel.
+///
+/// 2 collection types are accumulated:
+/// 1. to_despawn = BtreeSet<Entity>: Entities are id integer codes and so the BTreeSet
+/// automatically guarantees that duplicates will be removed. Used for despawning objects from
+/// the graphical display.
+/// 2. to_destroy = CollisionFrame<'_>: see the movable.rs file for definition. In short, this is
+/// a smart-struct used to prevent duplicate collisions and properly coallesce collision results
 fn update_collisions(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -653,7 +735,8 @@ fn update_collisions(
         //i.e. there will not be duplicates in this list
 
         //a lot of this complexity is to remove double counting and to handle group collisions
-        //a group collision would be one were more than 2 items collided together within the last frame
+        //a group collision would be one where more than 2 items collided together within the last frame -
+        //happens more often than one might think!
 
         let to_despawn: Mutex<BTreeSet<Entity>> = Mutex::new(BTreeSet::<Entity>::new());
         let to_destroy = Mutex::new(CollisionFrame::new());
@@ -683,7 +766,6 @@ fn update_collisions(
         let to_despawn = to_despawn.lock().unwrap();
         for item in to_despawn.iter() {
             destroy_object(&mut commands, *item);
-            //commands.entity(*item).despawn();
         }
 
         match to_destroy.lock().unwrap().collect() {
@@ -701,6 +783,16 @@ fn update_collisions(
     }
 }
 
+/// Schedule: Update Bevy System
+///
+/// The world requires a trigger to start the simulation. Here, it is a click onto the
+/// Universe canvas, an (optional) drag, and a release. This system represents the logic
+/// for the click whic will place the (heroic) planet at the location underneath the mouse
+/// cursor.
+///
+/// Most of this confusing logic are just coordinate mappings: the trigger (On<Pointer<Press>>)
+/// stores it's mouse coordinates in viewport coordinates = pixels of the rendering window but we
+/// need World coordinates which represents the universe as seen by the camera
 fn place_planet(
     trigger: On<Pointer<Press>>,
     mut state: ResMut<GameState>,
@@ -737,6 +829,13 @@ fn place_planet(
     }
 }
 
+/// Schedule: Update Bevy System
+///
+/// This sytem captures the dragging motion after the initial click to
+/// place the planet in the universe. The drag motion will change the velocity
+/// such that the planet's heading will follow the arrow drawn from it's starting
+/// location to the mouse's released location with the addition that the magnitude
+/// of that distance is translated into velocity (kinda like strecthing a rubberband)
 fn planet_dragged(
     drag: On<Pointer<Drag>>,
     state: Res<GameState>,
@@ -747,7 +846,7 @@ fn planet_dragged(
     }
 
     let mut planet = planet_query.single_mut().unwrap();
-    planet.velocity.vx += drag.delta.x * 10.0;
+    planet.velocity.vx += drag.delta.x * 10.0; //arb scaling that feels good
     planet.velocity.vy += -drag.delta.y * 10.0;
 }
 
@@ -759,6 +858,13 @@ fn check_for_start(_trigger: On<Pointer<Release>>, mut state: ResMut<GameState>)
     state.game_started = true;
 }
 
+/// Schedule: Update Bevy System
+///
+/// Checks of end of game logic which occurs if only a single black hole remains (maximal
+/// entropy in this universe). In this event, both clocks are guaranteed to stop and the
+/// frame updating will also yeild.
+///
+/// This System also updates the black hole and planet counter Text graphics
 fn check_for_gameover(
     objects: Query<(Entity, &Movable), With<Movable>>,
     mut bh_count_label: Query<&mut Text, (With<BHCounter>, Without<WorldCounter>)>,
