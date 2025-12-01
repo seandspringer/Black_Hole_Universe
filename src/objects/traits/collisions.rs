@@ -1,5 +1,4 @@
 use bevy::{math::FloatPow, prelude::*};
-use std::cmp::{max, min};
 
 pub enum Shapes {
     Circle(f32), //radius
@@ -15,6 +14,7 @@ pub struct Position {
     pub y: f32,
 }
 
+#[allow(dead_code)]
 impl Position {
     pub fn new(x: f32, y: f32) -> Position {
         Position {
@@ -29,7 +29,7 @@ impl Position {
         ((self.x - other.x).squared() + (self.y - other.y).squared()).sqrt()
     }
 
-    pub fn gen_line_segment(&self) -> Option<LineSegment> {
+    pub fn gen_line_segment(&'_ self) -> Option<LineSegment<'_>> {
         //https://www.sunshine2k.de/articles/algorithm/line2d/linerep2d.html
         let a: f32 = self.y_prev - self.y;
         let b = self.x - self.x_prev;
@@ -39,7 +39,7 @@ impl Position {
             None
         } else {
             Some(LineSegment {
-                pos: &self,
+                pos: self,
                 a,
                 b,
                 c,
@@ -69,9 +69,8 @@ impl<'a> LineSegment<'a> {
             && self.pos.y.max(self.pos.y_prev) >= y_on_line;
 
         if within_x & within_y {
-            let distance = (self.a * x + self.b * y + self.c).abs()
-                / (self.a * self.a + self.b * self.b).sqrt();
-            distance
+            (self.a * x + self.b * y + self.c).abs()
+                / (self.a * self.a + self.b * self.b).sqrt() //distance
         } else {
             //must be one endpoint is closest to this point
             let d1 = (self.pos.x - x).squared() + (self.pos.y - y).squared();
@@ -84,10 +83,7 @@ impl<'a> LineSegment<'a> {
 pub trait CollisionDetection {
     fn get_position(&self) -> Position;
     fn get_hitbox(&self) -> Shapes;
-    fn distance_to(&self, point: &Position) -> Option<f32> {
-        self.minimum_distance(point)
-    }
-
+    
     //https://www.topcoder.com/thrive/articles/Geometry%20Concepts%20part%202:%20%20Line%20Intersection%20and%20its%20Applications
     fn minimum_distance(&self, two: &Position) -> Option<f32> {
         let one = self.get_position();
@@ -99,21 +95,13 @@ pub trait CollisionDetection {
             let int_x = (l2.b * l1.c - l1.b * l2.c) / det;
             let int_y = (l1.a * l2.c - l2.a * l1.c) / det; //these are intesections of the infinite lines
 
-            if one.x.min(one.x_prev) >= int_x && one.x.max(one.x_prev) <= int_x {
-                if one.y.min(one.y_prev) >= int_y && one.y.max(one.y_prev) <= int_y {
+            if one.x.min(one.x_prev) >= int_x && one.x.max(one.x_prev) <= int_x 
+                && one.y.min(one.y_prev) >= int_y && one.y.max(one.y_prev) <= int_y {
                     //then intersect
                     return Some(0.0f32);
                 }
-            }
         }
 
-        //println!(
-        //    "NO intesect {} {} {} {}",
-        //   l1.distance_to_pt(two.x, two.y),
-        //  l1.distance_to_pt(two.x_prev, two.y_prev),
-        // l2.distance_to_pt(one.x, one.y),
-        //l2.distance_to_pt(one.x_prev, one.y_prev)
-        //);
         //lines are parallel and so a1=a2 and b1=b2
         //or line segemtns do not intesect.
         //either way, solve by finding closest endpoint to the other line
@@ -129,25 +117,17 @@ pub trait CollisionDetection {
         let other_position = other.get_position();
         let other_hitbox = other.get_hitbox();
 
-        //let distance = self.distance_to(&other_position);
         let min_r = self.minimum_distance(&other_position);
-        //if let None = distance {
-        //    return false;
-        //}
-        if let None = min_r {
+        if min_r.is_none() {
             return false;
         }
-        //let distance = distance.unwrap();
+        
         let min_r = min_r.unwrap();
 
         match my_hitbox {
             Shapes::Circle(r1) => match other_hitbox {
                 Shapes::Circle(r2) => {
-                    if min_r <= r1 + r2 {
-                        true
-                    } else {
-                        false
-                    }
+                    min_r <= r1 + r2
                 }
             },
         }

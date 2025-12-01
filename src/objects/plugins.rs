@@ -6,20 +6,15 @@ use crate::objects::movables::{
 };
 use crate::objects::sliders::{
     BLACKHOLE_COUNT_RNG, BLACKHOLE_MASS_RNG, BLACKHOLE_VEL_RNG, POSSTDEVMIN, SLIDERWIDTH,
-    SliderBkg, SliderGraphic, SliderType, SliderValue, VELSTDEVMIN, generate_slider,
+    SliderBkg, SliderType, SliderValue, VELSTDEVMIN, generate_slider,
 };
-use crate::objects::traits::collisions::{CollisionDetection, Position, Shapes};
+use crate::objects::traits::collisions::CollisionDetection;
 use bevy::camera::ScalingMode;
-use bevy::camera::Viewport;
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 use bevy::window::PrimaryWindow;
-use rand::rng;
-use rand_distr::{Distribution, Normal};
-use rayon::prelude::*;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 pub struct BlackHoleUniverse;
 
@@ -129,20 +124,20 @@ fn setup_objects(
 
     for (slider_value, slider_type) in sliders {
         match slider_type {
-            SliderType::BHCountSlider => {
+            SliderType::Count => {
                 bh_count = (slider_value.value * BLACKHOLE_COUNT_RNG.upper as f32)
                     .max(BLACKHOLE_COUNT_RNG.lower as f32)
                     .round() as u32;
             }
-            SliderType::BHMassSlider => {
+            SliderType::Mass => {
                 bh_mass = slider_value.value * bh_mass_mean;
             }
-            SliderType::BHVelocitySlider => {
+            SliderType::Velocity => {
                 bh_vel = (slider_value.value + VELSTDEVMIN)
                     * (BLACKHOLE_VEL_RNG.upper.abs() + BLACKHOLE_VEL_RNG.lower.abs())
                     / 2.0;
             }
-            SliderType::BHDensitySlider => {
+            SliderType::Density => {
                 //use 1-slider value so that max on the bar squeezes the universe the most
                 bh_pos_std = (1.0 - slider_value.value + POSSTDEVMIN) * UNIVERSE_SIZE / 2.0; //universesize/2 is max - basically fills the universe
             }
@@ -329,7 +324,7 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
     commands.entity(left_container).add_child(left_header);
 
     //spawn blackhole count slider
-    let count_slider = generate_slider(SliderType::BHCountSlider, "Count");
+    let count_slider = generate_slider(SliderType::Count, "Count");
     let count_base = commands
         .spawn((
             count_slider.base,
@@ -345,7 +340,7 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
     commands.entity(left_container).add_child(count_base);
 
     //spawn blackhole mass slider
-    let mass_slider = generate_slider(SliderType::BHMassSlider, "Masses");
+    let mass_slider = generate_slider(SliderType::Mass, "Masses");
     let mass_base = commands
         .spawn((
             mass_slider.base,
@@ -361,7 +356,7 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
     commands.entity(left_container).add_child(mass_base);
 
     //spawn blackhole velocity slider
-    let mass_slider = generate_slider(SliderType::BHVelocitySlider, "Velocity");
+    let mass_slider = generate_slider(SliderType::Velocity, "Velocity");
     let mass_base = commands
         .spawn((
             mass_slider.base,
@@ -377,7 +372,7 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
     commands.entity(left_container).add_child(mass_base);
 
     //spawn blackhole density slider
-    let mass_slider = generate_slider(SliderType::BHDensitySlider, "Density");
+    let mass_slider = generate_slider(SliderType::Density, "Density");
     let mass_base = commands
         .spawn((
             mass_slider.base,
@@ -418,7 +413,7 @@ fn update_slider_results(
     //check black hole number for changes
     for (slider_value, slider_type) in sliders {
         match slider_type {
-            SliderType::BHCountSlider => {
+            SliderType::Count => {
                 let bh_count = slider_value;
                 count_difference = (bh_count.value * BLACKHOLE_COUNT_RNG.upper as f32)
                     .max(BLACKHOLE_COUNT_RNG.lower as f32)
@@ -427,13 +422,13 @@ fn update_slider_results(
                         .max(BLACKHOLE_COUNT_RNG.lower as f32)
                         .round() as i32;
             }
-            SliderType::BHMassSlider => {
+            SliderType::Mass => {
                 bh_mass = slider_value.value * bh_mass_mean;
                 if slider_value.value != slider_value.prev_value {
                     update_bh_masses = true;
                 }
             }
-            SliderType::BHVelocitySlider => {
+            SliderType::Velocity => {
                 bh_vel = (slider_value.value + VELSTDEVMIN)
                     * (BLACKHOLE_VEL_RNG.upper.abs() + BLACKHOLE_VEL_RNG.lower.abs())
                     / 2.0;
@@ -441,7 +436,7 @@ fn update_slider_results(
                     update_bh_vel = true;
                 }
             }
-            SliderType::BHDensitySlider => {
+            SliderType::Density => {
                 //use 1-slider value so that max on the bar squeezes the universe the most
                 bh_pos_std = (1.0 - slider_value.value + POSSTDEVMIN) * UNIVERSE_SIZE / 2.0; //universesize/4 is max - basically fills the universe
                 if slider_value.value != slider_value.prev_value {
@@ -629,14 +624,14 @@ fn update_motion(
 
             //spherical universe wrap around
             if movable.position.x > BOUNDARY {
-                movable.position.x = movable.position.x - UNIVERSE_SIZE; //off to right
+                movable.position.x -= UNIVERSE_SIZE; //off to right
             } else if movable.position.x < -BOUNDARY {
-                movable.position.x = UNIVERSE_SIZE + movable.position.x; //off to left
+                movable.position.x += UNIVERSE_SIZE; //off to left
             }
             if movable.position.y > BOUNDARY {
-                movable.position.y = movable.position.y - UNIVERSE_SIZE; // off to top
+                movable.position.y -= UNIVERSE_SIZE; // off to top
             } else if movable.position.y < -BOUNDARY {
-                movable.position.y = UNIVERSE_SIZE + movable.position.y; //off to left
+                movable.position.y += UNIVERSE_SIZE; //off to bottom
             }
 
             transform.translation.x = movable.position.x;
@@ -668,11 +663,9 @@ fn update_collisions(
             let mut collide = false;
 
             for (_, item) in objects.iter() {
-                if item != movable {
-                    if item.collided(movable) {
-                        collide = true;
-                        set.append(item);
-                    }
+                if item != movable && item.collided(movable) {
+                    collide = true;
+                    set.append(item);
                 }
             }
 
@@ -749,9 +742,7 @@ fn planet_dragged(
     state: Res<GameState>,
     mut planet_query: Query<&mut Movable, With<ThePlanet>>,
 ) {
-    if state.game_started {
-        return;
-    } else if planet_query.iter().len() == 0 {
+    if state.game_started || planet_query.iter().len() == 0 {
         return;
     }
 
@@ -761,9 +752,7 @@ fn planet_dragged(
 }
 
 fn check_for_start(_trigger: On<Pointer<Release>>, mut state: ResMut<GameState>) {
-    if state.game_started {
-        return;
-    } else if !state.planet_placed {
+    if state.game_started || !state.planet_placed {
         return;
     }
 
@@ -783,7 +772,6 @@ fn check_for_gameover(
         match movable.otype {
             ObjectType::BlackHole => bh_count += 1,
             ObjectType::World => planet_count += 1,
-            _ => {}
         }
     }
 
@@ -791,7 +779,7 @@ fn check_for_gameover(
         if planet_count == 0 {
             state.world_alive = false;
         }
-        if bh_count == 1 {
+        if bh_count + planet_count <= 1 {
             state.game_alive = false;
         }
     }

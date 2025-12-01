@@ -1,11 +1,11 @@
 use crate::objects::gamestate::UNIVERSE_SIZE;
-use crate::objects::traits::collisions::{CollisionDetection, LineSegment, Position, Shapes};
+use crate::objects::traits::collisions::{CollisionDetection, Position, Shapes};
 use bevy::math::FloatPow;
 use bevy::prelude::*;
-use rand_distr::Normal;
 use std::cmp::{Eq, Ord, Ordering, PartialOrd};
 use std::collections::BTreeSet;
 use std::default::Default;
+use std::f32::consts::FRAC_PI_4;
 use std::sync::atomic::{AtomicU32, Ordering::SeqCst};
 
 static BLACKHOLECOUNT: AtomicU32 = AtomicU32::new(0);
@@ -15,7 +15,6 @@ static WORLDCOUNT: AtomicU32 = AtomicU32::new(0);
 pub enum ObjectType {
     BlackHole,
     World,
-    Null,
 }
 
 #[derive(Component, Debug)]
@@ -74,13 +73,10 @@ impl<'a> CollisionFrame<'a> {
         let mut found = false;
 
         for item in &mut self.array {
-            match CollisionSet::merge_intersection(item, &new) {
-                Some(n) => {
-                    *item = n;
-                    found = true;
-                    break;
-                }
-                None => {}
+            if let Some(n) = CollisionSet::merge_intersection(item, &new) {
+                *item = n;
+                found = true;
+                break;
             }
         }
 
@@ -94,7 +90,7 @@ impl<'a> CollisionFrame<'a> {
     pub fn collect(&self) -> CollisionResult {
         let mut ret = Vec::<Movable>::new(); //flatten
 
-        if self.array.len() == 0 {
+        if self.array.is_empty() {
             return CollisionResult::None;
         }
 
@@ -121,14 +117,6 @@ impl<'a> CollisionSet<'a> {
         CollisionSet {
             data: BTreeSet::<&'a Movable>::new(),
         }
-    }
-
-    pub fn from_tuple(&mut self, tup: (&'a Movable, &'a Movable)) -> Self {
-        let mut new = Self::new();
-        new.append(tup.0);
-        new.append(tup.1);
-
-        new
     }
 
     pub fn append(&mut self, other: &'a Movable) -> bool {
@@ -196,46 +184,6 @@ impl<'a> CollisionSet<'a> {
     }
 }
 
-#[derive(Component, Debug)]
-pub struct MovableTuple<'a, 'b>(pub &'a Movable, pub &'b Movable);
-impl<'a, 'b> MovableTuple<'a, 'b> {
-    pub fn new(one: &'a Movable, two: &'b Movable) -> Self {
-        MovableTuple(one, two)
-    }
-}
-impl<'a, 'b> PartialEq for MovableTuple<'a, 'b> {
-    fn eq(&self, other: &Self) -> bool {
-        let ret = ((self.0 == other.0) || (self.0 == other.1))
-            && ((self.1 == other.0) || (self.1 == other.1));
-        ret
-    }
-}
-impl<'a, 'b> Eq for MovableTuple<'a, 'b> {}
-impl<'a, 'b> PartialOrd for MovableTuple<'a, 'b> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-impl<'a, 'b> Ord for MovableTuple<'a, 'b> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        let my_index = std::cmp::min(self.0.get_id(), self.1.get_id());
-        let other_index = std::cmp::min(other.0.get_id(), other.1.get_id());
-
-        let ret = if my_index < other_index {
-            Ordering::Less
-        } else if my_index > other_index {
-            Ordering::Greater
-        } else {
-            Ordering::Equal
-        };
-
-        ret
-    }
-}
-
-// 2 planets split into 4 planets
-type PlanetCollisionResult = (Movable, Movable, Movable, Movable);
-
 impl Movable {
     const MINIMUM_RADIUS: f32 = 1.0f32;
     const G: f32 = 100_000_000.0;
@@ -247,20 +195,11 @@ impl Movable {
         let id = match otype {
             ObjectType::BlackHole => BLACKHOLECOUNT.fetch_add(1, SeqCst),
             ObjectType::World => WORLDCOUNT.fetch_add(1, SeqCst),
-            _ => 0,
         };
 
         Movable {
             id: ID(id),
             otype: *otype,
-            ..default()
-        }
-    }
-
-    pub fn new_nulltype() -> Self {
-        Movable {
-            id: ID(0),
-            otype: ObjectType::Null,
             ..default()
         }
     }
@@ -310,7 +249,6 @@ impl Movable {
                     self.size.radius = (0.56 * mass.powf(0.67)).max(Movable::MINIMUM_RADIUS);
                 }
             }
-            _ => {}
         }
 
         self
@@ -335,7 +273,6 @@ impl Movable {
                     self.size.mass = (radius / 0.56).powf(100.0 / 67.0) //(0.56 * mass.powf(0.67)).max(Movable::MINIMUM_RADIUS);
                 }
             }
-            _ => {}
         }
 
         self
@@ -379,19 +316,17 @@ impl Movable {
 
         if wrap_dx < dx_straight.abs() {
             //want to invert sign
-            if dx_straight.is_sign_negative() { 
+            if dx_straight < 0.0 {
                 dx = wrap_dx;
-            }
-            else {
+            } else {
                 dx = -wrap_dx;
             }
         }
         if wrap_dy < dy_straight.abs() {
             //want to invert sign
-            if dy_straight.is_sign_negative() { 
+            if dy_straight < 0.0 {
                 dy = wrap_dy;
-            }
-            else {
+            } else {
                 dy = -wrap_dy;
             }
         }
@@ -457,11 +392,11 @@ impl Movable {
         let new_velocity = (self.velocity.vx.squared() + self.velocity.vy.squared()).sqrt() / 2.0;
         let theta = self.velocity.vy.atan2(self.velocity.vx);
         let new_radius = self.size.radius / 2.0;
-        let angle_offset = 0.785398f32; //45 deg in rad 
+        let angle_offset = FRAC_PI_4; //45 deg in rad 
 
         //need to move these new planets so that they are outside eachother's collision zone
 
-        let new_theta = (theta + angle_offset);
+        let new_theta = theta + angle_offset;
         let p1 = Movable::new(&ObjectType::BlackHole)
             .set_position(
                 self.position.x + new_radius * new_theta.cos(),
@@ -474,7 +409,7 @@ impl Movable {
             .set_radius(new_radius)
             .build();
 
-        let new_theta = (theta - angle_offset);
+        let new_theta = theta - angle_offset;
         let p2 = Movable::new(&ObjectType::BlackHole)
             .set_position(
                 self.position.x - new_radius * new_theta.cos(),
@@ -489,22 +424,6 @@ impl Movable {
 
         (p1, p2)
     }
-
-    //private!
-    fn generate_planets(one: &Self, two: &Self) -> PlanetCollisionResult {
-        let (p1, p2) = one.split_planet();
-        let (p3, p4) = two.split_planet();
-        (p1, p2, p3, p4)
-    }
-
-    //self collided with all the members in others slice
-    /*pub fn handle_collision(one: &Self, two: &Self, out: &mut CollisionResult) {
-        if one.otype == ObjectType::BlackHole || two.otype == ObjectType::BlackHole {
-            *out = CollisionResult::Single(Movable::generate_blackhole(one, two));
-        } else {
-            *out = CollisionResult::Quad(Movable::generate_planets(one, two));
-        }
-    }*/
 
     pub fn process_collisions(items: &[&&Movable]) -> CollisionResult {
         let count = items.len();
@@ -526,16 +445,17 @@ impl Movable {
         if bh_count > 0 {
             //then the result must be a bh
             let mut cur = Movable::generate_blackhole(items[0], items[1]);
-            for i in 2..count {
-                cur = Movable::generate_blackhole(&cur, items[i]); //like a cumsum
+
+            for item in items.iter().take(count).skip(2) {
+                cur = Movable::generate_blackhole(&cur, item); //like a cumsum
             }
 
             CollisionResult::Single(cur)
         } else {
             //only planets in this collision
             let mut vec = Vec::<Movable>::new();
-            for i in 0..count {
-                let (p1, p2) = items[i].split_planet();
+            for item in items.iter().take(count) {
+                let (p1, p2) = item.split_planet();
                 vec.push(p1);
                 vec.push(p2);
             }
@@ -568,15 +488,13 @@ impl Ord for Movable {
         let my_index = self.get_id();
         let other_index = other.get_id();
 
-        let ret = if my_index < other_index {
+        if my_index < other_index {
             Ordering::Less
         } else if my_index > other_index {
             Ordering::Greater
         } else {
             Ordering::Equal
-        };
-
-        ret
+        }
     }
 }
 

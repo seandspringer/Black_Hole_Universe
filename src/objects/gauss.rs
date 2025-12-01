@@ -1,7 +1,7 @@
-use bevy::prelude::*;
 use rand::prelude::*;
 use rand_distr::{Distribution, Normal};
 
+#[allow(dead_code)]
 pub enum GaussBoundary {
     None,
     Lower(f32),            //clamp
@@ -16,6 +16,7 @@ pub struct Gauss {
     boundary: GaussBoundary,
 }
 
+#[allow(dead_code)]
 impl Gauss {
     pub fn new(mean: f32, std: f32, boundary: GaussBoundary) -> Gauss {
         assert!(std > 0.0);
@@ -23,7 +24,7 @@ impl Gauss {
         Gauss {
             generator: rand::rng(),
             distribution: Normal::new(mean, std).unwrap(),
-            boundary: boundary,
+            boundary,
         }
     }
 

@@ -41,10 +41,10 @@ impl Default for SliderValue {
 
 #[derive(Component)]
 pub enum SliderType {
-    BHCountSlider,
-    BHMassSlider,
-    BHDensitySlider,
-    BHVelocitySlider,
+    Count,
+    Mass,
+    Density,
+    Velocity,
 }
 
 #[derive(Component)]
@@ -55,9 +55,6 @@ pub struct SliderBase {
     node: Node,
     bordercolor: BorderColor,
     outline: Outline,
-    //pub interaction: Interaction,
-    //pub relative_cursor_pos: RelativeCursorPosition,
-    //pub slider_value: SliderValue,
     pub bevy_identifier: SliderType,
 }
 
@@ -73,7 +70,6 @@ pub struct SliderText {
 pub struct SliderBackground {
     node: Node,
     color: BackgroundColor,
-    //pub bevy_identifier: SliderBkg,
 }
 
 #[derive(Bundle)]
@@ -86,7 +82,6 @@ pub struct SliderGraphic {
 pub fn generate_slider(stype: SliderType, text: &str) -> SliderGraphic {
     let base = SliderBase {
         node: Node {
-            //position_type: PositionType::Absolute,
             height: px(50.0),
             width: px(SLIDERWIDTH),
             align_items: AlignItems::Center,
@@ -97,9 +92,6 @@ pub fn generate_slider(stype: SliderType, text: &str) -> SliderGraphic {
         },
         bordercolor: BorderColor::all(Color::WHITE),
         outline: Outline::new(px(1), Val::ZERO, Color::WHITE),
-        //interaction: Interaction::None,
-        //relative_cursor_pos: RelativeCursorPosition::default(),
-        //slider_value: SliderValue::default(),
         bevy_identifier: stype,
     };
 
@@ -123,7 +115,6 @@ pub fn generate_slider(stype: SliderType, text: &str) -> SliderGraphic {
             ..default()
         },
         color: BackgroundColor(Color::linear_rgba(0.0, 0.4, 0.0, 1.0)),
-        //bevy_identifier: SliderBkg,
     };
 
     SliderGraphic { base, text, bkg }
