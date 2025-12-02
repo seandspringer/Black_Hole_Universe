@@ -1,3 +1,23 @@
+//! Plugins.rs module
+//!
+//! This code directly interacts with the Bevy render engine.
+//! The functionality is added as a plugin (by `impl Plugin for BlackHoleUniverse`).  
+//!
+//! In short, the Bevy render engine is of an ECS type and so
+//! - Entities = grouping of components that represent objects painted in the world
+//! - Components = are unique attributes of entities. These are represented as Rust Structs / Enums
+//! - Systems = functions which are run before each frame rendering.
+//! - Resouces = these are like gobal variables that can be passed into Systems
+//!
+//! The functions in Plugins.rs define the Systems which are run by the Bevy event loop and
+//! dictate the action of the simulation. They are installed using the build method of the
+//! Plugin trait.  
+//!
+//! Examples include:
+//! 1. Any object rendering
+//! 2. Any object actions
+//! 3. Any user-interaction handling
+
 use crate::objects::clocks::{BHCounter, TotalTime, WorldCounter, WorldTime};
 use crate::objects::gamestate::{GameState, ThePlanet, UNIVERSE_SIZE};
 use crate::objects::gauss::{Gauss, GaussBoundary};
