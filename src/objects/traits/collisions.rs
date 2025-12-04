@@ -1,11 +1,29 @@
+//! Collisions.rs
+//!
+//! collisions module defines mechanics for determine whether a collision has occured
+//! given two objects current frame position and previous frame position. Complexity
+//! arises when two objects are moving at sufficient velocity compared to the frame rate
+//! so that the pass through eachother completly within that frame. Line segment logic
+//! is implemented herein to determine if two objects passed through eachother between frames
+
 use bevy::{math::FloatPow, prelude::*};
 
+/// Shapes enum: todo()!
+///
+/// implements a geometric shape used to determine a collision by defining the
+/// boundary of the object via this geometry primitive. ToDo: implement more shapes
+/// to the universe
 pub enum Shapes {
     Circle(f32), //radius
                  //Square { width: f32 },
                  //Rectangle { width: f32, height: f32 },
 }
 
+/// Position struct: Component
+///
+/// The position of the object: Note this is used within the Movable struct.
+/// the need to store the previous and current location will hopefully become
+/// evident below
 #[derive(Component, Copy, Clone, Debug)]
 pub struct Position {
     pub x_prev: f32,
@@ -14,8 +32,14 @@ pub struct Position {
     pub y: f32,
 }
 
+/// helper methods for calculating position related calculations.
+///
+/// the allow(dead_code) because there are todo()! methods within
 #[allow(dead_code)]
 impl Position {
+    /// Constructor
+    ///
+    /// set's current and prev to same value, intentional
     pub fn new(x: f32, y: f32) -> Position {
         Position {
             x,
@@ -25,10 +49,19 @@ impl Position {
         }
     }
 
+    /// fn distance_to
+    ///
+    /// calculate Euclidean distance between self and other
     pub fn distance_to(&self, other: &Position) -> f32 {
         ((self.x - other.x).squared() + (self.y - other.y).squared()).sqrt()
     }
 
+    /// fn gen_lin_segment
+    ///
+    /// given self's current and previous position, generate a LineSegment
+    /// from those endpoints. Returns an Option<LineSegment> which can only
+    /// return None if the objects previous and current position are the same,
+    /// indicating that it hasn't moved yet
     pub fn gen_line_segment(&'_ self) -> Option<LineSegment<'_>> {
         //https://www.sunshine2k.de/articles/algorithm/line2d/linerep2d.html
         let a: f32 = self.y_prev - self.y;
@@ -43,6 +76,10 @@ impl Position {
     }
 }
 
+/// LineSegment struct
+///
+/// represents a finite line segment in Standard (Cartesian) form
+/// a*x + b*y = c
 pub struct LineSegment<'a> {
     pos: &'a Position,
     pub a: f32,
@@ -50,7 +87,12 @@ pub struct LineSegment<'a> {
     pub c: f32,
 } //(A,B,C)
 
+/// impl block for LinSegment used to calculate distance via method interface
 impl<'a> LineSegment<'a> {
+    /// fn distance_to_pt
+    ///
+    /// returns the nearest distance of this line segment to the given point.
+    /// This function is used to determine if an intersection occured between frames
     fn distance_to_pt(&self, x: f32, y: f32) -> f32 {
         //https://www.splashlearn.com/math-vocabulary/distance-of-a-point-from-a-line#:~:text=The%20shortest%20distance%20between%20point%20and%20line,drawn%20from%20the%20point%20to%20the%20line.
         let factor = (self.a * x + self.b * y + self.c) / (self.a * self.a + self.b * self.b); //https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line
