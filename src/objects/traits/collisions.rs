@@ -80,12 +80,13 @@ impl Position {
 ///
 /// represents a finite line segment in Standard (Cartesian) form
 /// a*x + b*y = c
+/// Note: pos is a borrowed reference with lifetime 'a
 pub struct LineSegment<'a> {
     pos: &'a Position,
     pub a: f32,
     pub b: f32,
     pub c: f32,
-} //(A,B,C)
+}
 
 /// impl block for LinSegment used to calculate distance via method interface
 impl<'a> LineSegment<'a> {
@@ -96,8 +97,10 @@ impl<'a> LineSegment<'a> {
     fn distance_to_pt(&self, x: f32, y: f32) -> f32 {
         //https://www.splashlearn.com/math-vocabulary/distance-of-a-point-from-a-line#:~:text=The%20shortest%20distance%20between%20point%20and%20line,drawn%20from%20the%20point%20to%20the%20line.
         let factor = (self.a * x + self.b * y + self.c) / (self.a * self.a + self.b * self.b); //https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line
-        let x_on_line = x - self.a * factor;
+        let x_on_line = x - self.a * factor; //point on line closest to the given point
         let y_on_line = y - self.b * factor;
+        // the point (x_on_line,y_on_line) can either be one of the endpoints or somewhere
+        // in the interior of the line segment:
 
         //now need to check that x,y is on this line SEGMENT (self.x, self.y), (self.x_prev, self.y_prev)
         let within_x: bool = self.pos.x.min(self.pos.x_prev) <= x_on_line
@@ -116,40 +119,80 @@ impl<'a> LineSegment<'a> {
     }
 }
 
+/// CollisionDetection Trait
+///
+/// Implement this trait for any object that requires collision detection be
+/// calculated. Implementers need only define the top two functions
+/// 1. fn get_position(&self) -> Position - simply defines the position of the object. This can be center of mass, center of geometry, etc
+/// 2. fn get_hitbox(&self) -> Shapes - this returns a primitive geometric shape enum with internal data describing the size of the shape.
+/// together, Position and Shapes defines the necessary components to implement the collision detection calculations
 pub trait CollisionDetection {
+    /// fn get_position(&self) -> Position : Abstract!
+    ///
+    /// Must be defined by implementor. Typically recommend to return the geometric center of the
+    /// implementing object
     fn get_position(&self) -> Position;
+
+    /// fn get_hitbox(&self) -> Shapes : Abstract!
+    ///
+    /// Must be defined by the implementor. The Shape variant and internal data should define the
+    /// hit box of the object (typically it's area in 2D or volume in 3D).
     fn get_hitbox(&self) -> Shapes;
 
-    //https://www.topcoder.com/thrive/articles/Geometry%20Concepts%20part%202:%20%20Line%20Intersection%20and%20its%20Applications
+    /// fn minimum_distance(&self, two: &Position) -> Option<f32>
+    ///
+    /// Given a Position, determines the minimum distance from the two line segments
+    /// defined by the Positions (x,y) and (x_prev, y_prev) parameters. This is performed by
+    /// 1. Calculating the determinent of the system of equations; if = 0 then the lines are parallel
+    /// 2. If parallel, then the LineSegment::distance_to_pt method is invoked to find the nearest point
+    /// to the lines
+    /// 3. If lines do intersect, then the intersection point is calculated and checked to be within the segment
+    /// 3. If interseciton pt is outside the segments, the LineSegment::distance_to_pt method is again invoked
+    /// https://www.topcoder.com/thrive/articles/Geometry%20Concepts%20part%202:%20%20Line%20Intersection%20and%20its%20Applications
     fn minimum_distance(&self, two: &Position) -> Option<f32> {
         let one = self.get_position();
         let l1: LineSegment = one.gen_line_segment()?;
         let l2: LineSegment = two.gen_line_segment()?;
 
         let det = (l1.b * l2.a) - (l2.b * l1.a);
-        if det != 0.0 {
-            let int_x = (l2.b * l1.c - l1.b * l2.c) / det;
-            let int_y = (l1.a * l2.c - l2.a * l1.c) / det; //these are intesections of the infinite lines
 
+        // if det == 0 then lines are parallel
+        if det != 0.0 {
+            // if not parallel, then they must intersect eventually...
+            // these are intesections of the infinite lines:
+            let int_x = (l2.b * l1.c - l1.b * l2.c) / det;
+            let int_y = (l1.a * l2.c - l2.a * l1.c) / det;
+
+            // now need to check if that intersection points is one the segment:
             if one.x.min(one.x_prev) >= int_x
                 && one.x.max(one.x_prev) <= int_x
                 && one.y.min(one.y_prev) >= int_y
                 && one.y.max(one.y_prev) <= int_y
             {
-                //then intersect
+                //then they intersect, so minimum distance is 0
                 return Some(0.0f32);
             }
         }
 
-        //lines are parallel and so a1=a2 and b1=b2
-        //or line segemtns do not intesect.
-        //either way, solve by finding closest endpoint to the other line
+        // lines are parallel and so a1=a2 and b1=b2 or line segements do not intesect.
+        // either way, solve by finding closest endpoint to the other line (the closest
+        // point must be one of the endpoints now)
         Some(
             l1.distance_to_pt(two.x, two.y)
                 .min(l1.distance_to_pt(two.x_prev, two.y_prev)),
         )
     }
 
+    /// fn collided(&self, other: &dyn CollisionDetection) -> bool
+    ///
+    /// given a trait object of this same trait, returns a boolean indicating
+    /// whether the two CollisionDetection trait objects have collided. Calculations
+    /// are performed using the methods within this trait and can be summarized as follows:
+    /// 1. Get the Position and hitbox Shapes for self and other
+    /// 2. Calculate the minimum distance between the two positions using the logic
+    /// described in detail above
+    /// 3. If this minimum distance is within the intersection region of the hitboxes, returns true
+    /// and otherwise false
     fn collided(&self, other: &dyn CollisionDetection) -> bool {
         let my_hitbox = self.get_hitbox();
 
