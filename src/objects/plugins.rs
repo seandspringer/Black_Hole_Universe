@@ -950,6 +950,14 @@ fn check_for_gameover(
     }
 }
 
+/// Schedule: Update Bevy System
+///
+/// Implements the logic for the restart simulation button. The buttons visiblity will only be set to Visible
+/// when the gameover state has been achieved (see fn check_for_gameover). Functionality include here:
+/// 1. Check for button visiblity (meaning game over state achieved)
+/// 2. Change button background during hover, hover leave, and button press
+/// 3. Set the GameState resource flag restart_clicked to true if button is pressed
+///    (this signals the wipe and rebuild of the universe; see fn check_for_restart)
 fn button_system(
     mut input_focus: ResMut<InputFocus>,
     mut interaction_query: Query<
@@ -1002,6 +1010,14 @@ fn button_system(
     }
 }
 
+/// Schedule: Update Bevy System
+///
+/// Handles reseting the playing field after the Restart button has been pressed by the user.
+/// 1. Checks for the GameState::restart_clicked flag and if set,
+/// 2. Destroys all Entities that remain which as Movable
+/// 3. Triggers the fn setup_objects to rebuild the starting map
+/// 4. Resets the GameState
+/// 5. Hides the button until next GameOver state has been reached
 fn check_for_restart(
     mut state: ResMut<GameState>,
     mut commands: Commands,
