@@ -2,6 +2,8 @@
 
 Copyright (c) 2025 Sean Springer
 
+![alt text](./imgs/application.png "Black Hole Universe HUD displaying the look and feel of the UI")
+
 **Black Hole Universe** is a 2D N-body simulator / game built entirely in
 `Rust` using the `Bevy` game engine.  
 Can you find structure in chaos?
@@ -49,7 +51,8 @@ variables that may be user-adjustable and may effect the outcome of the simulati
 ## How To Run The Simulation
 
 After succesfully building and running the `Rust` program (see _Build and Run_ below),  
-users will be presented with a UI containing the universe and various HUD elements.
+users will be presented with a UI containing the universe and various HUD elements (see image  
+at the top of this repo for reference).
 
 1. Total Simulation Time and Black Hole Count: in the top left corner of the HUD are text  
    fields labled `Total Time:` and `Black Holes:`. These are counters for the length of time  
