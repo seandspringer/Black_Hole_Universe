@@ -148,7 +148,7 @@ pub trait CollisionDetection {
     ///    to the lines
     /// 3. If lines do intersect, then the intersection point is calculated and checked to be within the segment
     /// 3. If interseciton pt is outside the segments, the LineSegment::distance_to_pt method is again invoked
-    /// 
+    ///
     /// See the following link for reference:
     /// https://www.topcoder.com/thrive/articles/Geometry%20Concepts%20part%202:%20%20Line%20Intersection%20and%20its%20Applications
     fn minimum_distance(&self, two: &Position) -> Option<f32> {
