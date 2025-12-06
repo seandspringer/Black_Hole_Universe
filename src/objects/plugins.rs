@@ -18,6 +18,7 @@
 //! 2. Any object actions
 //! 3. Any user-interaction handling
 
+use crate::objects::button::{BtnState, GameOverBtn, gen_button, update_btn};
 use crate::objects::clocks::{BHCounter, TotalTime, WorldCounter, WorldTime};
 use crate::objects::gamestate::{GameState, ThePlanet, UNIVERSE_SIZE};
 use crate::objects::gauss::{Gauss, GaussBoundary};
@@ -30,9 +31,9 @@ use crate::objects::sliders::{
 };
 use crate::objects::traits::collisions::CollisionDetection;
 use bevy::camera::ScalingMode;
-use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 use bevy::window::PrimaryWindow;
+use bevy::{input_focus::InputFocus, prelude::*};
 use std::collections::BTreeSet;
 use std::sync::Mutex;
 
@@ -48,11 +49,13 @@ impl Plugin for BlackHoleUniverse {
     fn build(&self, app: &mut App) {
         app.add_plugins(MeshPickingPlugin);
         app.insert_resource(GameState::new());
+        app.init_resource::<InputFocus>();
         app.add_systems(Startup, (setup_field, setup_hub, setup_objects).chain());
         app.add_systems(
             Update,
             (drag_slider, update_slider, update_slider_results).chain(),
         );
+        app.add_systems(Update, (button_system, check_for_restart).chain());
         app.add_systems(
             Update,
             (
@@ -423,6 +426,25 @@ fn setup_hub(mut commands: Commands, window_query: Query<&Window, With<PrimaryWi
     commands.entity(mass_base).add_child(mass_bkg);
     commands.entity(mass_base).add_child(mass_text);
     commands.entity(left_container).add_child(mass_base);
+
+    //spawn the reset button in bottom right corner
+    commands
+        .spawn(Node {
+            //width: percent(100),
+            //height: percent(100),
+            position_type: PositionType::Absolute,
+            bottom: px(10),
+            right: px(10), //Val::Percent(-5.0),
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            ..default()
+        })
+        .with_children(|parent| {
+            parent.spawn((
+                GameOverBtn,
+                gen_button("Restart?", 150, 50, Visibility::Hidden),
+            ));
+        });
 }
 
 /// Schedule: Update Bevy System
@@ -648,14 +670,14 @@ fn update_clock(
         if state.game_alive {
             for mut clock in &mut total_time {
                 //First deref gets the Text object, 2nd gets the internal String
-                **clock = format!("{:.2}", time.elapsed_secs_f64());
+                **clock = format!("{:.2}", time.elapsed_secs_f64() - state.start_time);
             }
         }
 
         if state.world_alive {
             for mut clock in &mut world_time {
                 //First deref gets the Text object, 2nd gets the internal String
-                **clock = format!("{:.2}", time.elapsed_secs_f64());
+                **clock = format!("{:.2}", time.elapsed_secs_f64() - state.start_time);
             }
         }
     }
@@ -738,10 +760,10 @@ fn update_motion(
 ///
 /// 2 collection types are accumulated:
 /// 1. to_despawn = BtreeSet<Entity>: Entities are id integer codes and so the BTreeSet
-/// automatically guarantees that duplicates will be removed. Used for despawning objects from
-/// the graphical display.
+///    automatically guarantees that duplicates will be removed. Used for despawning objects from
+///    the graphical display.
 /// 2. to_destroy = CollisionFrame<'_>: see the movable.rs file for definition. In short, this is
-/// a smart-struct used to prevent duplicate collisions and properly coallesce collision results
+///    a smart-struct used to prevent duplicate collisions and properly coallesce collision results
 fn update_collisions(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -870,12 +892,18 @@ fn planet_dragged(
     planet.velocity.vy += -drag.delta.y * 10.0;
 }
 
-fn check_for_start(_trigger: On<Pointer<Release>>, mut state: ResMut<GameState>) {
+/// Scheudle: Update Bevy System
+///
+/// Initiates the start of the game / simulation. Requires that the user has placed
+/// the planet on the board. Updates the GameState resource to indicate the simluation
+/// has begun and sets the reference start time for the clocks
+fn check_for_start(_trigger: On<Pointer<Release>>, mut state: ResMut<GameState>, time: Res<Time>) {
     if state.game_started || !state.planet_placed {
         return;
     }
 
     state.game_started = true;
+    state.start_time = time.elapsed_secs_f64();
 }
 
 /// Schedule: Update Bevy System
@@ -890,6 +918,7 @@ fn check_for_gameover(
     mut bh_count_label: Query<&mut Text, (With<BHCounter>, Without<WorldCounter>)>,
     mut world_count_label: Query<&mut Text, (With<WorldCounter>, Without<BHCounter>)>,
     mut state: ResMut<GameState>,
+    mut interaction_query: Query<&mut Visibility, With<GameOverBtn>>,
 ) {
     let mut bh_count: usize = 0;
     let mut planet_count: usize = 0;
@@ -913,4 +942,84 @@ fn check_for_gameover(
     //&Text -> Text -> String
     **bh_count_label.single_mut().unwrap() = format!("{}", bh_count);
     **world_count_label.single_mut().unwrap() = format!("{}", planet_count);
+
+    //show the restart button
+    if state.game_started && !state.game_alive {
+        let mut visibility = interaction_query.single_mut().unwrap();
+        *visibility = Visibility::Visible;
+    }
+}
+
+fn button_system(
+    mut input_focus: ResMut<InputFocus>,
+    mut interaction_query: Query<
+        (Entity, &Interaction, &mut BackgroundColor, &mut Visibility),
+        Changed<Interaction>,
+    >,
+    mut state: ResMut<GameState>,
+) {
+    for (entity, interaction, mut background_color, visibility) in &mut interaction_query {
+        if *visibility != Visibility::Visible {
+            continue;
+        }
+
+        match *interaction {
+            Interaction::None => {
+                update_btn(
+                    entity,
+                    &mut input_focus,
+                    &mut background_color,
+                    BtnState::None,
+                );
+            }
+            Interaction::Hovered => {
+                update_btn(
+                    entity,
+                    &mut input_focus,
+                    &mut background_color,
+                    BtnState::Hovered,
+                );
+            }
+            Interaction::Pressed => {
+                update_btn(
+                    entity,
+                    &mut input_focus,
+                    &mut background_color,
+                    BtnState::Pressed,
+                );
+
+                state.restart_clicked = true;
+
+                // reset btn look for new time
+                update_btn(
+                    entity,
+                    &mut input_focus,
+                    &mut background_color,
+                    BtnState::None,
+                );
+            }
+        }
+    }
+}
+
+fn check_for_restart(
+    mut state: ResMut<GameState>,
+    mut commands: Commands,
+    meshes: ResMut<Assets<Mesh>>,
+    materials: ResMut<Assets<ColorMaterial>>,
+    sliders: Query<(&SliderValue, &SliderType)>,
+    objects: Query<Entity, With<Movable>>,
+    mut interaction_query: Query<&mut Visibility, With<GameOverBtn>>,
+) {
+    if state.restart_clicked {
+        for entity in &objects {
+            destroy_object(&mut commands, entity);
+        }
+
+        setup_objects(commands, meshes, materials, sliders);
+        state.reset();
+
+        let mut visibility = interaction_query.single_mut().unwrap();
+        *visibility = Visibility::Hidden;
+    }
 }

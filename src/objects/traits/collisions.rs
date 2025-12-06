@@ -125,7 +125,7 @@ impl<'a> LineSegment<'a> {
 /// calculated. Implementers need only define the top two functions
 /// 1. fn get_position(&self) -> Position - simply defines the position of the object. This can be center of mass, center of geometry, etc
 /// 2. fn get_hitbox(&self) -> Shapes - this returns a primitive geometric shape enum with internal data describing the size of the shape.
-/// together, Position and Shapes defines the necessary components to implement the collision detection calculations
+///    together, Position and Shapes defines the necessary components to implement the collision detection calculations
 pub trait CollisionDetection {
     /// fn get_position(&self) -> Position : Abstract!
     ///
@@ -145,9 +145,11 @@ pub trait CollisionDetection {
     /// defined by the Positions (x,y) and (x_prev, y_prev) parameters. This is performed by
     /// 1. Calculating the determinent of the system of equations; if = 0 then the lines are parallel
     /// 2. If parallel, then the LineSegment::distance_to_pt method is invoked to find the nearest point
-    /// to the lines
+    ///    to the lines
     /// 3. If lines do intersect, then the intersection point is calculated and checked to be within the segment
     /// 3. If interseciton pt is outside the segments, the LineSegment::distance_to_pt method is again invoked
+    /// 
+    /// See the following link for reference:
     /// https://www.topcoder.com/thrive/articles/Geometry%20Concepts%20part%202:%20%20Line%20Intersection%20and%20its%20Applications
     fn minimum_distance(&self, two: &Position) -> Option<f32> {
         let one = self.get_position();
@@ -190,9 +192,9 @@ pub trait CollisionDetection {
     /// are performed using the methods within this trait and can be summarized as follows:
     /// 1. Get the Position and hitbox Shapes for self and other
     /// 2. Calculate the minimum distance between the two positions using the logic
-    /// described in detail above
+    ///    described in detail above
     /// 3. If this minimum distance is within the intersection region of the hitboxes, returns true
-    /// and otherwise false
+    ///    and otherwise false
     fn collided(&self, other: &dyn CollisionDetection) -> bool {
         let my_hitbox = self.get_hitbox();
 

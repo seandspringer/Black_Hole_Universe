@@ -17,8 +17,8 @@ use rand_distr::{Distribution, Normal};
 /// 2. Lower(f32) - only enforce a clamped lower boundary of value f32
 /// 3. Upper(f32) - only enforce a clamped upper boundary of value f32
 /// 4. ClampBoth((f32,f32)) - enforce clamped double-ended boundary conditions of (lower, upper)
-/// 5. WrapBoth((f32,f32)) - enforce wrapped double-ended boundary codntions of (lower,upper)  
-/// Note, that a value which bases outside of (lower, upper) will wrap around to the other side
+/// 5. WrapBoth((f32,f32)) - enforce wrapped double-ended boundary codntions of (lower,upper)
+///    Note, that a value which bases outside of (lower, upper) will wrap around to the other side
 ///
 /// allow(dead_code) used to prevent warnings on unused Lower and Upper variants: intended in future use
 #[allow(dead_code)]
